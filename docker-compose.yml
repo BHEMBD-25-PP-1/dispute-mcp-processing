@@ -1,9 +1,43 @@
-version: "3.9"
-
 services:
   app:
     build: .
+    container_name: dispute-app
     ports:
       - "8000:8000"
     env_file:
       - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://dispute:dispute@postgres:5432/dispute
+      LOG_LEVEL: INFO
+      MCP_TAXI_URL: ${MCP_TAXI_URL:-http://host.docker.internal:9001}
+      MCP_AFISHA_URL: ${MCP_AFISHA_URL:-http://host.docker.internal:9002}
+      MCP_REQUEST_TIMEOUT: "10"
+    volumes:
+      - ./app:/app/app
+      - ./tests:/app/tests
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: dispute-postgres
+    environment:
+      POSTGRES_USER: dispute
+      POSTGRES_PASSWORD: dispute
+      POSTGRES_DB: dispute
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dispute -d dispute"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
