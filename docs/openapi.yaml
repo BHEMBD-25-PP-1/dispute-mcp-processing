@@ -1,0 +1,192 @@
+openapi: 3.0.3
+info:
+  title: Dispute Processing API
+  version: 1.0.0
+  description: API для кабинета операциониста
+
+servers:
+  - url: /api/v1
+
+paths:
+
+  /disputes:
+    post:
+      summary: Создать диспут
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDisputeRequest'
+      responses:
+        '201':
+          description: Диспут создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateDisputeResponse'
+        '400':
+          description: Ошибка валидации
+
+    get:
+      summary: Получить список диспутов
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Список диспутов
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DisputeListItem'
+
+  /disputes/{id}:
+    get:
+      summary: Получить диспут по ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Детали диспута
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DisputeDetails'
+        '404':
+          description: Не найден
+
+components:
+
+  schemas:
+
+    CreateDisputeRequest:
+      type: object
+      required:
+        - rrn
+        - transaction_id
+        - amount
+        - date
+        - time
+      properties:
+        rrn:
+          type: string
+          example: "123456789012345"
+        termInstId:
+          type: string
+          example: "00012345"
+        amount:
+          type: number
+          example: 499.00
+        date:
+          type: string
+          format: date
+          example: "2026-05-15"
+        time:
+          type: string
+          example: "14:30:00"
+        card_mask:
+          type: string
+          example: "****1234"
+        transaction_id:
+          type: string
+          example: "TXN-H9O"
+
+        order_id:
+          type: string
+          nullable: true
+          example: "TXN-12345"
+        user_id:
+          type: string
+          nullable: true
+          example: "+79001234567"
+        merchant_name:
+          type: string
+          nullable: true
+          example: "Яндекс.Такси"
+        user_statement:
+          type: string
+          nullable: true
+          example: "водитель не приехал, деньги списали"
+
+    CreateDisputeResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "uuid"
+        status:
+          type: string
+          enum: [NEW, PROCESSING, DONE, FAILED, NEEDS_REVIEW]
+        created_at:
+          type: string
+          format: date-time
+
+    DisputeListItem:
+      type: object
+      properties:
+        id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [NEW, PROCESSING, DONE, FAILED, NEEDS_REVIEW]
+        service:
+          type: string
+          example: "taxi"
+        amount:
+          type: number
+        preview:
+          type: string
+          example: "водитель не приехал"
+
+    DisputeDetails:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [NEW, PROCESSING, DONE, FAILED, NEEDS_REVIEW]
+
+        input:
+          $ref: '#/components/schemas/CreateDisputeRequest'
+
+        parsed:
+          type: object
+          properties:
+            service_hint:
+              type: string
+              example: "taxi"
+            order_id:
+              type: string
+            problem:
+              type: string
+
+        result:
+          type: object
+          properties:
+            decision:
+              type: string
+              enum: [CONFIRMED, REFUND_POSSIBLE, NOT_FOUND, NEEDS_REVIEW]
+            text:
+              type: string
+              example: "Поездка состоялась, возврат не требуется"
