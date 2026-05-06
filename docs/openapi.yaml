@@ -2,10 +2,16 @@ openapi: 3.0.3
 info:
   title: Dispute Processing API
   version: 1.0.0
-  description: API для кабинета операциониста
+  description: |
+    API для кабинета операциониста.
+    Все запросы требуют Bearer Token.
+    Authorization: Bearer <JWT_TOKEN>
 
 servers:
   - url: /api/v1
+
+security:
+  - BearerAuth: []
 
 paths:
 
@@ -27,6 +33,23 @@ paths:
                 $ref: '#/components/schemas/CreateDisputeResponse'
         '400':
           description: Ошибка валидации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '401':
+          description: Не авторизован - отсутствует или невалидный токен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthErrorResponse'
+        '403':
+          description: Доступ запрещён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForbiddenErrorResponse'
+
 
     get:
       summary: Получить список диспутов
@@ -35,23 +58,51 @@ paths:
           in: query
           schema:
             type: string
+            enum: [NEW, PROCESSING, DONE, FAILED, NEEDS_REVIEW]
+          description: Фильтр по статусу. Если не указан — возвращаются все диспуты.
         - name: limit
           in: query
           schema:
             type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
         - name: offset
           in: query
           schema:
             type: integer
+            minimum: 0
+            default: 0
       responses:
         '200':
           description: Список диспутов
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/DisputeListItem'
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DisputeListItem'
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+        '401':
+          description: Не авторизован - отсутствует или невалидный токен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthErrorResponse'
+        '403':
+          description: Доступ запрещён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForbiddenErrorResponse'
 
   /disputes/{id}:
     get:
@@ -69,8 +120,24 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DisputeDetails'
+        '401':
+          description: Не авторизован - отсутствует или невалидный токен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthErrorResponse'
+        '403':
+          description: Доступ запрещён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForbiddenErrorResponse'
         '404':
           description: Не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundErrorResponse'
 
 components:
 
@@ -79,61 +146,85 @@ components:
     CreateDisputeRequest:
       type: object
       required:
-        - rrn
-        - transaction_id
-        - amount
-        - date
-        - time
+        - id
+        - status
+        - created_at
       properties:
         rrn:
           type: string
+          description: Retrieval Reference Number (из банка)
           example: "123456789012345"
         termInstId:
           type: string
+          description: ID банка-участника
           example: "00012345"
         amount:
           type: number
+          description: Сумма списания
           example: 499.00
         date:
           type: string
           format: date
+          description: Дата транзакции
           example: "2026-05-15"
         time:
           type: string
+          description: Время транзакции
           example: "14:30:00"
         card_mask:
           type: string
+          description: Маскированный номер карты
           example: "****1234"
         transaction_id:
           type: string
+          description: Внутренний ID НСПК
           example: "TXN-H9O"
-
         order_id:
           type: string
           nullable: true
-          example: "TXN-12345"
+          description: ID заказа в сервисе (если известен)
+          example: "RIDE-7777"
         user_id:
           type: string
           nullable: true
+          description: Телефон или email пользователя
           example: "+79001234567"
         merchant_name:
           type: string
           nullable: true
+          description: Название сервиса (Такси/Афиша)
           example: "Яндекс.Такси"
         user_statement:
           type: string
           nullable: true
+          description: Исходный текст жалобы пользователя
           example: "водитель не приехал, деньги списали"
+
 
     CreateDisputeResponse:
       type: object
+      required:
+        - rrn
+        - termInstId
+        - transaction_id
+        - amount
+        - date
+        - time
+        - card_mask
       properties:
         id:
           type: string
+          description: UUID созданного диспута
           example: "uuid"
         status:
           type: string
           enum: [NEW, PROCESSING, DONE, FAILED, NEEDS_REVIEW]
+          description: |
+            NEW — создан, ожидает обработки
+            PROCESSING — в процессе обработки
+            DONE — обработан успешно
+            FAILED — ошибка обработки
+            NEEDS_REVIEW — требуется ручное рассмотрение
         created_at:
           type: string
           format: date-time
@@ -151,7 +242,7 @@ components:
           enum: [NEW, PROCESSING, DONE, FAILED, NEEDS_REVIEW]
         service:
           type: string
-          example: "taxi"
+          example: "Yandex taxi"
         amount:
           type: number
         preview:
@@ -172,21 +263,145 @@ components:
 
         parsed:
           type: object
+          description: Результат парсинга входящего сообщения — все извлечённые идентификаторы и характеристики
           properties:
-            service_hint:
+            transaction_id:
               type: string
-              example: "taxi"
+              nullable: true
+              description: ID транзакции
+              example: "TXN-H9O"
             order_id:
               type: string
+              nullable: true
+              description: ID заказа в сервисе
+              example: "RIDE-7777"
+            user_id:
+              type: string
+              nullable: true
+              description: ID пользователя (телефон, email)
+              example: "+79001234567"
+            card_mask:
+              type: string
+              nullable: true
+              description: Маскированный номер карты
+              example: "****1234"
+            amount:
+              type: number
+              nullable: true
+              description: Сумма списания
+              example: 499.00
+            date:
+              type: string
+              format: date
+              nullable: true
+              description: Дата транзакции
+              example: "2026-05-15"
+            time:
+              type: string
+              nullable: true
+              description: Время транзакции
+              example: "14:30:00"
+            merchant_name:
+              type: string
+              nullable: true
+              description: Название сервиса
+              example: "Яндекс.Такси"
+            service_hint:
+              type: string
+              nullable: true
+              description: Определённый тип сервиса (taxi/afisha)
+              example: "taxi"
             problem:
               type: string
+              nullable: true
+              description: Краткое описание проблемы, извлечённое из текста
+              example: "водитель не приехал"
+            user_statement:
+              type: string
+              nullable: true
+              description: Исходный текст жалобы пользователя
+              example: "водитель не приехал, деньги списали"
 
         result:
           type: object
           properties:
             decision:
               type: string
-              enum: [CONFIRMED, REFUND_POSSIBLE, NOT_FOUND, NEEDS_REVIEW]
+              enum: [REFUND, DECLINED, NOT_FOUND, NEEDS_REVIEW]
+              description: |
+                REFUND — принято решение в пользу пользователя. Средства подлежат возврату.
+                DECLINED — в возврате отказано. Транзакция подтверждена, услуга оказана корректно.
+                NOT_FOUND — данные не найдены. По указанным идентификаторам ничего не обнаружено.
+                NEEDS_REVIEW — недостаточно данных для принятия решения. Требуется ручное рассмотрение.
             text:
               type: string
-              example: "Поездка состоялась, возврат не требуется"
+              description: Обоснованный ответ на русском языке
+              example: "Поездка состоялась 15.05.2026, маршрут А→Б, сумма списана корректно"
+
+    AuthErrorResponse:
+      type: object
+      required:
+        - message
+        - code
+      properties:
+        message:
+          type: string
+          example: "Invalid token"
+        code:
+          type: string
+          example: "AUTH_ERROR"
+
+    ForbiddenErrorResponse:
+      type: object
+      required:
+        - message
+        - code
+      properties:
+        message:
+          type: string
+          example: "Forbidden"
+        code:
+          type: string
+          example: "FORBIDDEN_ERROR"
+
+    ValidationErrorResponse:
+      type: object
+      required:
+        - message
+        - code
+        - details
+      properties:
+        message:
+          type: string
+          example: "Ошибка валидации"
+        code:
+          type: string
+          example: "VALIDATION_ERROR"
+        details:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          example:
+            amount: ["must be a number", "is required"]
+            date: ["must be a valid date"]
+
+    NotFoundErrorResponse:
+      type: object
+      required:
+        - message
+        - code
+      properties:
+        message:
+          type: string
+          example: "not found"
+        code:
+          type: string
+          example: "NOT_FOUND_ERROR"
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
