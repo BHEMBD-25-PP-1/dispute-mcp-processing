@@ -14,6 +14,29 @@ security:
   - BearerAuth: []
 
 paths:
+  /login:
+    post:
+      summary: Аутентификация оператора
+      description: Получение JWT токена для доступа к API
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Успешная аутентификация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Неверные учётные данные
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthErrorResponse'
 
   /disputes:
     post:
@@ -139,16 +162,166 @@ paths:
               schema:
                 $ref: '#/components/schemas/NotFoundErrorResponse'
 
+  /admin/users:
+    get:
+      summary: Получить список пользователей
+      security:
+        - BearerAuth: [ ]
+      description: Доступ только для пользователей с ролью ADMIN.
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserResponse'
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthErrorResponse'
+        '403':
+          description: Недостаточно прав - требуется роль ADMIN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForbiddenErrorResponse'
+    post:
+      summary: Создать нового пользователя
+      security:
+        - BearerAuth: [ ]
+      description: Доступ только для пользователей с ролью ADMIN.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreateRequest'
+      responses:
+        '201':
+          description: Пользователь создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          description: Ошибка валидации - отсутствуют обязательные поля, username уже существует, роль указана неверно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthErrorResponse'
+        '403':
+          description: Недостаточно прав - требуется роль ADMIN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForbiddenErrorResponse'
+
+  /change-password:
+    patch:
+      summary: Сменить пароль
+      description: Пользователь меняет пароль, выданный администратором
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - old_password
+                - new_password
+              properties:
+                old_password:
+                  type: string
+                  format: password
+                  description: Текущий пароль
+                  example: "oldPass123"
+                new_password:
+                  type: string
+                  format: password
+                  description: Новый пароль
+                  example: "newPass456"
+      responses:
+        '200':
+          description: Пароль успешно изменён
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Password changed successfully"
+        '400':
+          description: Ошибка валидации (неверный старый пароль, новый пароль слишком слабый)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthErrorResponse'
+
 components:
 
   schemas:
 
+    LoginRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          description: Имя пользователя оператора
+          example: "operator"
+        password:
+          type: string
+          format: password
+          description: Пароль
+          example: "password123"
+
+    LoginResponse:
+      type: object
+      required:
+        - access_token
+        - token_type
+      properties:
+        access_token:
+          type: string
+          description: JWT токен для Bearer авторизации
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        token_type:
+          type: string
+          description: Тип токена
+          example: "bearer"
+
+
     CreateDisputeRequest:
       type: object
       required:
-        - id
-        - status
-        - created_at
+        - rrn
+        - termInstId
+        - amount
+        - date
+        - time
+        - card_mask
+        - transaction_id
       properties:
         rrn:
           type: string
@@ -204,18 +377,14 @@ components:
     CreateDisputeResponse:
       type: object
       required:
-        - rrn
-        - termInstId
-        - transaction_id
-        - amount
-        - date
-        - time
-        - card_mask
+        - id
+        - status
+        - created_at
       properties:
         id:
           type: string
           description: UUID созданного диспута
-          example: "uuid"
+          example: "550e8400-e29b-41d4-a716-446655440000"
         status:
           type: string
           enum: [NEW, PROCESSING, DONE, FAILED, NEEDS_REVIEW]
@@ -228,6 +397,7 @@ components:
         created_at:
           type: string
           format: date-time
+          example: "2026-05-07T10:30:00Z"
 
     DisputeListItem:
       type: object
@@ -338,6 +508,40 @@ components:
               description: Обоснованный ответ на русском языке
               example: "Поездка состоялась 15.05.2026, маршрут А→Б, сумма списана корректно"
 
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        role:
+          type: string
+          enum: [ ADMIN, OPERATOR ]
+        createdAt:
+          type: string
+          format: date-time
+
+    UserCreateRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          description: Уникальное имя пользователя
+          example: "operator1"
+        password:
+          type: string
+          format: password
+          description: Пароль пользователя
+          example: "TempPass123"
+        role:
+          type: string
+          enum: [OPERATOR, ADMIN]
+          default: OPERATOR
+
     AuthErrorResponse:
       type: object
       required:
@@ -377,15 +581,6 @@ components:
         code:
           type: string
           example: "VALIDATION_ERROR"
-        details:
-          type: object
-          additionalProperties:
-            type: array
-            items:
-              type: string
-          example:
-            amount: ["must be a number", "is required"]
-            date: ["must be a valid date"]
 
     NotFoundErrorResponse:
       type: object
