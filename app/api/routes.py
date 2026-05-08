@@ -1,22 +1,15 @@
 from fastapi import APIRouter
+from app.core.logger import logger
+from app.models.request import DisputeRequest
+from app.models.response import DisputeResponse
+from app.services.aggregator import process_dispute
 
-from app.services.parser import parse_dispute
-from app.services.nlu import detect_service
-from app.services.dispatcher import dispatch
-from app.services.aggregator import build_response
 
 router = APIRouter()
 
 
-@router.post("/dispute")
-def handle_dispute(payload: dict):
-
-    text = payload.get("text")
-
-    parsed = parse_dispute(text)
-
-    nlu = detect_service(text)
-
-    mcp_data = dispatch(nlu["service"], parsed)
-
-    return build_response(parsed, nlu, mcp_data)
+@router.post("/dispute", response_model=DisputeResponse)
+def handle_dispute(request: DisputeRequest):
+    logger.info(f"New dispute received: {request.text}")
+    result = process_dispute(request.text)
+    return result
