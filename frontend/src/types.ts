@@ -35,6 +35,12 @@ export type TimelineEvent = {
   status: 'info' | 'success' | 'warning';
 };
 
+export type Operator = {
+  name: string;
+  email: string;
+  role: string;
+};
+
 export type DisputeCase = {
   id: string;
   title: string;
