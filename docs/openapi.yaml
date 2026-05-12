@@ -1,0 +1,602 @@
+openapi: 3.0.3
+info:
+  title: Dispute Processing API
+  version: 1.0.0
+  description: |
+    API для кабинета операциониста.
+    Все запросы требуют Bearer Token.
+    Authorization: Bearer <JWT_TOKEN>
+
+servers:
+  - url: /api/v1
+
+security:
+  - BearerAuth: []
+
+paths:
+  /login:
+    post:
+      summary: Аутентификация оператора
+      description: Получение JWT токена для доступа к API
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Успешная аутентификация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Неверные учётные данные
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthErrorResponse'
+
+  /disputes:
+    post:
+      summary: Создать диспут
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDisputeRequest'
+      responses:
+        '201':
+          description: Диспут создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateDisputeResponse'
+        '400':
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '401':
+          description: Не авторизован - отсутствует или невалидный токен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthErrorResponse'
+        '403':
+          description: Доступ запрещён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForbiddenErrorResponse'
+
+
+    get:
+      summary: Получить список диспутов
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [NEW, PROCESSING, DONE, FAILED, NEEDS_REVIEW]
+          description: Фильтр по статусу. Если не указан — возвращаются все диспуты.
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Список диспутов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DisputeListItem'
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+        '401':
+          description: Не авторизован - отсутствует или невалидный токен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthErrorResponse'
+        '403':
+          description: Доступ запрещён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForbiddenErrorResponse'
+
+  /disputes/{id}:
+    get:
+      summary: Получить диспут по ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Детали диспута
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DisputeDetails'
+        '401':
+          description: Не авторизован - отсутствует или невалидный токен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthErrorResponse'
+        '403':
+          description: Доступ запрещён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForbiddenErrorResponse'
+        '404':
+          description: Не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundErrorResponse'
+
+  /admin/users:
+    get:
+      summary: Получить список пользователей
+      security:
+        - BearerAuth: [ ]
+      description: Доступ только для пользователей с ролью ADMIN.
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserResponse'
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthErrorResponse'
+        '403':
+          description: Недостаточно прав - требуется роль ADMIN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForbiddenErrorResponse'
+    post:
+      summary: Создать нового пользователя
+      security:
+        - BearerAuth: [ ]
+      description: Доступ только для пользователей с ролью ADMIN.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreateRequest'
+      responses:
+        '201':
+          description: Пользователь создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          description: Ошибка валидации - отсутствуют обязательные поля, username уже существует, роль указана неверно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthErrorResponse'
+        '403':
+          description: Недостаточно прав - требуется роль ADMIN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForbiddenErrorResponse'
+
+  /change-password:
+    patch:
+      summary: Сменить пароль
+      description: Пользователь меняет пароль, выданный администратором
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - old_password
+                - new_password
+              properties:
+                old_password:
+                  type: string
+                  format: password
+                  description: Текущий пароль
+                  example: "oldPass123"
+                new_password:
+                  type: string
+                  format: password
+                  description: Новый пароль
+                  example: "newPass456"
+      responses:
+        '200':
+          description: Пароль успешно изменён
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Password changed successfully"
+        '400':
+          description: Ошибка валидации (неверный старый пароль, новый пароль слишком слабый)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthErrorResponse'
+
+components:
+
+  schemas:
+
+    LoginRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          description: Имя пользователя оператора
+          example: "operator"
+        password:
+          type: string
+          format: password
+          description: Пароль
+          example: "password123"
+
+    LoginResponse:
+      type: object
+      required:
+        - access_token
+        - token_type
+      properties:
+        access_token:
+          type: string
+          description: JWT токен для Bearer авторизации
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        token_type:
+          type: string
+          description: Тип токена
+          example: "bearer"
+
+
+    CreateDisputeRequest:
+      type: object
+      required:
+        - rrn
+        - termInstId
+        - amount
+        - date
+        - time
+        - card_mask
+        - transaction_id
+      properties:
+        rrn:
+          type: string
+          description: Retrieval Reference Number (из банка)
+          example: "123456789012345"
+        termInstId:
+          type: string
+          description: ID банка-участника
+          example: "00012345"
+        amount:
+          type: number
+          description: Сумма списания
+          example: 499.00
+        date:
+          type: string
+          format: date
+          description: Дата транзакции
+          example: "2026-05-15"
+        time:
+          type: string
+          description: Время транзакции
+          example: "14:30:00"
+        card_mask:
+          type: string
+          description: Маскированный номер карты
+          example: "****1234"
+        transaction_id:
+          type: string
+          description: Внутренний ID НСПК
+          example: "TXN-H9O"
+        order_id:
+          type: string
+          nullable: true
+          description: ID заказа в сервисе (если известен)
+          example: "RIDE-7777"
+        user_id:
+          type: string
+          nullable: true
+          description: Телефон или email пользователя
+          example: "+79001234567"
+        merchant_name:
+          type: string
+          nullable: true
+          description: Название сервиса (Такси/Афиша)
+          example: "Яндекс.Такси"
+        user_statement:
+          type: string
+          nullable: true
+          description: Исходный текст жалобы пользователя
+          example: "водитель не приехал, деньги списали"
+
+
+    CreateDisputeResponse:
+      type: object
+      required:
+        - id
+        - status
+        - created_at
+      properties:
+        id:
+          type: string
+          description: UUID созданного диспута
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        status:
+          type: string
+          enum: [NEW, PROCESSING, DONE, FAILED, NEEDS_REVIEW]
+          description: |
+            NEW — создан, ожидает обработки
+            PROCESSING — в процессе обработки
+            DONE — обработан успешно
+            FAILED — ошибка обработки
+            NEEDS_REVIEW — требуется ручное рассмотрение
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-05-07T10:30:00Z"
+
+    DisputeListItem:
+      type: object
+      properties:
+        id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [NEW, PROCESSING, DONE, FAILED, NEEDS_REVIEW]
+        service:
+          type: string
+          example: "Yandex taxi"
+        amount:
+          type: number
+        preview:
+          type: string
+          example: "водитель не приехал"
+
+    DisputeDetails:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [NEW, PROCESSING, DONE, FAILED, NEEDS_REVIEW]
+
+        input:
+          $ref: '#/components/schemas/CreateDisputeRequest'
+
+        parsed:
+          type: object
+          description: Результат парсинга входящего сообщения — все извлечённые идентификаторы и характеристики
+          properties:
+            transaction_id:
+              type: string
+              nullable: true
+              description: ID транзакции
+              example: "TXN-H9O"
+            order_id:
+              type: string
+              nullable: true
+              description: ID заказа в сервисе
+              example: "RIDE-7777"
+            user_id:
+              type: string
+              nullable: true
+              description: ID пользователя (телефон, email)
+              example: "+79001234567"
+            card_mask:
+              type: string
+              nullable: true
+              description: Маскированный номер карты
+              example: "****1234"
+            amount:
+              type: number
+              nullable: true
+              description: Сумма списания
+              example: 499.00
+            date:
+              type: string
+              format: date
+              nullable: true
+              description: Дата транзакции
+              example: "2026-05-15"
+            time:
+              type: string
+              nullable: true
+              description: Время транзакции
+              example: "14:30:00"
+            merchant_name:
+              type: string
+              nullable: true
+              description: Название сервиса
+              example: "Яндекс.Такси"
+            service_hint:
+              type: string
+              nullable: true
+              description: Определённый тип сервиса (taxi/afisha)
+              example: "taxi"
+            problem:
+              type: string
+              nullable: true
+              description: Краткое описание проблемы, извлечённое из текста
+              example: "водитель не приехал"
+            user_statement:
+              type: string
+              nullable: true
+              description: Исходный текст жалобы пользователя
+              example: "водитель не приехал, деньги списали"
+
+        result:
+          type: object
+          properties:
+            decision:
+              type: string
+              enum: [REFUND, DECLINED, NOT_FOUND, NEEDS_REVIEW]
+              description: |
+                REFUND — принято решение в пользу пользователя. Средства подлежат возврату.
+                DECLINED — в возврате отказано. Транзакция подтверждена, услуга оказана корректно.
+                NOT_FOUND — данные не найдены. По указанным идентификаторам ничего не обнаружено.
+                NEEDS_REVIEW — недостаточно данных для принятия решения. Требуется ручное рассмотрение.
+            text:
+              type: string
+              description: Обоснованный ответ на русском языке
+              example: "Поездка состоялась 15.05.2026, маршрут А→Б, сумма списана корректно"
+
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        role:
+          type: string
+          enum: [ ADMIN, OPERATOR ]
+        createdAt:
+          type: string
+          format: date-time
+
+    UserCreateRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          description: Уникальное имя пользователя
+          example: "operator1"
+        password:
+          type: string
+          format: password
+          description: Пароль пользователя
+          example: "TempPass123"
+        role:
+          type: string
+          enum: [OPERATOR, ADMIN]
+          default: OPERATOR
+
+    AuthErrorResponse:
+      type: object
+      required:
+        - message
+        - code
+      properties:
+        message:
+          type: string
+          example: "Invalid token"
+        code:
+          type: string
+          example: "AUTH_ERROR"
+
+    ForbiddenErrorResponse:
+      type: object
+      required:
+        - message
+        - code
+      properties:
+        message:
+          type: string
+          example: "Forbidden"
+        code:
+          type: string
+          example: "FORBIDDEN_ERROR"
+
+    ValidationErrorResponse:
+      type: object
+      required:
+        - message
+        - code
+        - details
+      properties:
+        message:
+          type: string
+          example: "Ошибка валидации"
+        code:
+          type: string
+          example: "VALIDATION_ERROR"
+
+    NotFoundErrorResponse:
+      type: object
+      required:
+        - message
+        - code
+      properties:
+        message:
+          type: string
+          example: "not found"
+        code:
+          type: string
+          example: "NOT_FOUND_ERROR"
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
