@@ -1,10 +1,9 @@
+import sys
 import json
 from mcp.server.fastmcp import FastMCP
 
-# Создаём сервер
 mcp = FastMCP("taxi-mock")
 
-# Тестовая база поездок
 MOCK_RIDES = {
     "TXN-98765": {
         "order_id": "TXN-98765",
@@ -39,4 +38,8 @@ async def get_ride_details(order_id: str) -> str:
     return json.dumps(ride, ensure_ascii=False, indent=2)
 
 if __name__ == "__main__":
-    mcp.run()
+    if len(sys.argv) > 1 and sys.argv[1] == "--transport=sse":
+        import uvicorn
+        mcp.run(transport="sse")
+    else:
+        mcp.run()
