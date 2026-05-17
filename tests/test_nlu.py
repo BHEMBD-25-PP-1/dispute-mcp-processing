@@ -1,14 +1,16 @@
 from app.services import nlu
 
+def test_detect_service_calls_prompt(monkeypatch):
 
-def test_detect_service_taxi(monkeypatch):
+    captured = {}
 
-    class FakeGigaChat:
+    class FakeLLM:
         def chat(self, prompt: str):
+            captured["prompt"] = prompt
             return "taxi"
 
-    monkeypatch.setattr(nlu, "get_llm_client", lambda: FakeGigaChat())
+    monkeypatch.setattr(nlu, "get_llm_client", lambda: FakeLLM())
 
-    result = nlu.detect_service("order_id=TXN-123 поездка такси")
+    nlu.detect_service("поездка такси TXN-123")
 
-    assert result["service"] == "taxi"
+    assert "TXN-123" in captured["prompt"]

@@ -4,11 +4,13 @@ from app.services.dispatcher import dispatch
 from app.core.logger import logger
 
 
+
 def process_dispute(text: str):
     logger.info("Starting dispute processing pipeline")
     parsed = parse_dispute(text)
-    nlu = detect_service(text)
-    mcp_data = dispatch(nlu["service"], parsed)
+    nlu = detect_service(text) or {}
+    service = nlu.get("service")
+    mcp_data = dispatch(service, parsed)
 
     return {
         "parsed": parsed,

@@ -1,7 +1,9 @@
 import uuid
 import requests
-from app.core.config import gigaChatProperties
 from app.llm.base import BaseLLMClient
+from app.core.llm_config import get_gigachat_settings
+
+gigachat_settings = get_gigachat_settings()
 
 
 class GigaChatClient(BaseLLMClient):
@@ -12,7 +14,7 @@ class GigaChatClient(BaseLLMClient):
     def _get_token(self):
 
         headers = {
-            "Authorization": f"Basic {gigaChatProperties.GIGACHAT_AUTH_KEY}",
+            "Authorization": f"Basic {gigachat_settings.GIGACHAT_AUTH_KEY}",
             "Content-Type": "application/x-www-form-urlencoded",
             "Accept": "application/json",
             "RqUID": str(uuid.uuid4())
@@ -23,7 +25,7 @@ class GigaChatClient(BaseLLMClient):
         }
 
         response = requests.post(
-            gigaChatProperties.GIGACHAT_AUTH_URL,
+            gigachat_settings.GIGACHAT_AUTH_URL,
             headers=headers,
             data=data,
             verify=False
@@ -52,7 +54,7 @@ class GigaChatClient(BaseLLMClient):
         }
 
         response = requests.post(
-            gigaChatProperties.GIGACHAT_API_URL,
+            gigachat_settings.GIGACHAT_API_URL,
             headers=headers,
             json=payload,
             verify=False

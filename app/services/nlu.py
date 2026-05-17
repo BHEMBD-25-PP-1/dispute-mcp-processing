@@ -8,9 +8,12 @@ def build_prompt(text: str):
 
 
 def detect_service(text: str):
-    client = get_llm_client()
+    client = get_llm_client() 
     response = client.chat(build_prompt(text))
-    service = response.strip().lower()
+    if not response:
+        logger.error("Empty LLM response")
+        return {"service": "unknown"}
+    service = str(response).strip().lower()
     logger.info(f"Detected service: {service}")
     return {
         "service": service
