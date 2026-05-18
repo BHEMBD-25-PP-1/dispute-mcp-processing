@@ -7,3 +7,4 @@ frontend/vite.config.d.ts
 frontend/vite.config.js
 .idea/
 .env
+__pycache__/
