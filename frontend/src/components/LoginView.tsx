@@ -1,5 +1,6 @@
 import { FormEvent, useState } from 'react';
-import { KeyRound, LogIn, ShieldCheck, UserRound } from 'lucide-react';
+import { ExternalLink, KeyRound, LogIn, ShieldCheck, UserRound } from 'lucide-react';
+import { login } from '../api';
 import type { Operator } from '../types';
 
 type LoginViewProps = {
@@ -7,23 +8,34 @@ type LoginViewProps = {
 };
 
 export function LoginView({ onLogin }: LoginViewProps) {
-  const [email, setEmail] = useState('operator@nspk.ru');
-  const [password, setPassword] = useState('');
+  const [username, setUsername] = useState('operator');
+  const [password, setPassword] = useState('operator123');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const submitLogin = (event: FormEvent<HTMLFormElement>) => {
+  const submitLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!email.trim() || !password.trim()) {
+    if (!username.trim() || !password.trim()) {
       setError('Заполните логин и пароль');
       return;
     }
 
-    onLogin({
-      name: email.split('@')[0] || 'operator',
-      email,
-      role: 'Операционист',
-    });
+    setIsSubmitting(true);
+    setError('');
+    try {
+      const session = await login(username, password);
+      onLogin({
+        name: session.username,
+        username: session.username,
+        role: 'Операционист',
+        token: session.token,
+      });
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Не удалось войти');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -45,10 +57,10 @@ export function LoginView({ onLogin }: LoginViewProps) {
             <UserRound size={18} aria-hidden="true" />
             <input
               autoComplete="username"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="operator@nspk.ru"
-              type="email"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              placeholder="Введите username"
+              type="text"
             />
           </div>
         </label>
@@ -72,11 +84,37 @@ export function LoginView({ onLogin }: LoginViewProps) {
 
         {error ? <p className="form-error">{error}</p> : null}
 
-        <button className="primary-button login-submit" type="submit">
+        <button className="primary-button login-submit" type="submit" disabled={isSubmitting}>
           <LogIn size={16} aria-hidden="true" />
-          Войти
+          {isSubmitting ? 'Входим...' : 'Войти'}
         </button>
       </form>
+
+      <section className="demo-note" aria-label="Информация о демо режиме">
+        <strong>ДЕМО-режим</strong>
+        <p>
+          Данные и сценарии операторской очереди обслуживаются backend API. Используйте тестовую учетную
+          запись ниже для входа в стенд.
+        </p>
+        <dl>
+          <div>
+            <dt>Логин</dt>
+            <dd>operator</dd>
+          </div>
+          <div>
+            <dt>Пароль</dt>
+            <dd>operator123</dd>
+          </div>
+        </dl>
+        <a
+          href="https://github.com/BHEMBD-25-PP-1/dispute-mcp-processing"
+          rel="noreferrer"
+          target="_blank"
+        >
+          Репозиторий проекта
+          <ExternalLink size={14} aria-hidden="true" />
+        </a>
+      </section>
     </main>
   );
 }

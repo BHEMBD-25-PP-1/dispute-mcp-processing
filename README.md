@@ -98,7 +98,7 @@ frontend/
   src/
     components/      # UI-компоненты рабочего места оператора
     features/
-      disputes/      # парсинг, workflow и моковые кейсы диспутов
+      disputes/      # UI helper-логика очереди
     App.tsx
 devops/
   Dockerfile

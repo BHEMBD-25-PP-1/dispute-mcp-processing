@@ -74,3 +74,11 @@ class DisputeStateResponse(BaseModel):
     version: int
     assigned_to: str | None = None
     locked_until: datetime | None = None
+
+
+class CaseActionRequest(BaseModel):
+    message: str
+
+
+class CaseResultUpdateRequest(BaseModel):
+    result: str

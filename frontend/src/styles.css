@@ -53,6 +53,7 @@ button:disabled {
 
 .login-page {
   display: grid;
+  gap: 14px;
   min-height: 100vh;
   place-items: center;
   padding: 18px;
@@ -61,7 +62,7 @@ button:disabled {
 .login-panel {
   display: grid;
   gap: 18px;
-  width: min(100%, 430px);
+  width: min(100%, 520px);
   padding: 24px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -132,6 +133,68 @@ button:disabled {
 
 .login-submit {
   width: 100%;
+}
+
+.demo-note {
+  display: grid;
+  gap: 10px;
+  width: min(100%, 520px);
+  padding: 14px;
+  border: 1px solid var(--amber);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--amber-soft);
+}
+
+.demo-note strong {
+  color: var(--amber);
+  font-size: 0.86rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.demo-note p {
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.demo-note dl {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.demo-note dl div {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 8px;
+}
+
+.demo-note dt,
+.demo-note dd {
+  margin: 0;
+  font-size: 0.86rem;
+}
+
+.demo-note dt {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.demo-note dd {
+  font-weight: 850;
+}
+
+.demo-note a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  color: var(--green);
+  font-size: 0.88rem;
+  font-weight: 850;
+  text-decoration: none;
 }
 
 .topbar {
@@ -326,8 +389,8 @@ h1 {
 
 .case-row:hover,
 .case-row.is-selected {
-  border-color: var(--green);
-  background: var(--green-soft);
+  border-color: var(--blue);
+  background: var(--blue-soft);
 }
 
 .case-row:hover {
@@ -335,11 +398,27 @@ h1 {
 }
 
 .case-row--attention {
+  border-left-color: var(--red);
+}
+
+.case-row--processing {
   border-left-color: var(--amber);
 }
 
 .case-row--resolved {
   border-left-color: var(--green);
+}
+
+.case-row--attention.is-selected,
+.case-row--attention:hover {
+  border-color: var(--red);
+  background: var(--red-soft);
+}
+
+.case-row--processing.is-selected,
+.case-row--processing:hover {
+  border-color: var(--amber);
+  background: var(--amber-soft);
 }
 
 .case-row__top,
@@ -372,6 +451,16 @@ h1 {
   background: var(--amber-soft);
   font-size: 0.76rem;
   font-weight: 850;
+}
+
+.empty-queue {
+  padding: 12px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  background: #fbfcfa;
+  font-size: 0.9rem;
+  line-height: 1.4;
 }
 
 .case-header,

@@ -1,30 +1,71 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  fetchCases,
+  generateCaseResult,
+  parseCase,
+  runCaseMcp,
+  updateCaseResult,
+} from './api';
 import { CaseBoard } from './components/CaseBoard';
 import { InspectorPanel } from './components/InspectorPanel';
 import { LoginView } from './components/LoginView';
 import { QueuePanel } from './components/QueuePanel';
 import { Topbar } from './components/Topbar';
-import { serviceLabel } from './constants';
-import { createConnectors, mockDisputes } from './features/disputes/mockCases';
-import { buildOperatorAnswer, parseIncomingMessage } from './features/disputes/parser';
-import { getNextConnectors, formatNow } from './features/disputes/workflow';
+import { pickVisibleCaseId } from './features/disputes/queue';
 import type { DisputeCase, Operator } from './types';
 
 function App() {
   const [operator, setOperator] = useState<Operator | null>(null);
-  const [cases, setCases] = useState<DisputeCase[]>(mockDisputes);
-  const [selectedId, setSelectedId] = useState(mockDisputes[0].id);
-  const [draftMessage, setDraftMessage] = useState(mockDisputes[0].message);
+  const [cases, setCases] = useState<DisputeCase[]>([]);
+  const [selectedId, setSelectedId] = useState('');
+  const [draftMessage, setDraftMessage] = useState('');
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
   const selectedCase = useMemo(
     () => cases.find((item) => item.id === selectedId) ?? cases[0],
     [cases, selectedId],
   );
 
-  const parsedPreview = useMemo(() => parseIncomingMessage(draftMessage), [draftMessage]);
+  const parsedPreview = selectedCase?.identifiers ?? { service: 'unknown' as const, confidence: 0 };
 
-  const updateSelectedCase = (updater: (item: DisputeCase) => DisputeCase) => {
-    setCases((current) => current.map((item) => (item.id === selectedCase.id ? updater(item) : item)));
+  useEffect(() => {
+    if (!operator) {
+      setCases([]);
+      setSelectedId('');
+      setDraftMessage('');
+      return;
+    }
+
+    setIsLoading(true);
+    setError('');
+    fetchCases(operator.token)
+      .then((nextCases) => {
+        setCases(nextCases);
+        const nextSelectedId = pickVisibleCaseId(nextCases, nextCases[0]?.id ?? '');
+        const nextCase = nextCases.find((item) => item.id === nextSelectedId) ?? nextCases[0];
+        setSelectedId(nextCase?.id ?? '');
+        setDraftMessage(nextCase?.message ?? '');
+      })
+      .catch(() => setError('Не удалось загрузить очередь диспутов'))
+      .finally(() => setIsLoading(false));
+  }, [operator]);
+
+  const applyCaseUpdate = (updatedCase: DisputeCase) => {
+    setCases((current) => {
+      const nextCases = current.map((item) => (item.id === updatedCase.id ? updatedCase : item));
+      const nextSelectedId = pickVisibleCaseId(nextCases, updatedCase.id, updatedCase.id);
+      if (nextSelectedId !== updatedCase.id) {
+        const nextCase = nextCases.find((item) => item.id === nextSelectedId);
+        setSelectedId(nextSelectedId);
+        if (nextCase) {
+          setDraftMessage(nextCase.message);
+        }
+      } else {
+        setDraftMessage(updatedCase.message);
+      }
+      return nextCases;
+    });
   };
 
   const selectCase = (caseId: string) => {
@@ -37,80 +78,21 @@ function App() {
     setDraftMessage(nextCase.message);
   };
 
-  const applyParsing = () => {
-    const parsed = parseIncomingMessage(draftMessage);
-    updateSelectedCase((item) => ({
-      ...item,
-      status: parsed.confidence < 70 ? 'attention' : 'processing',
-      message: draftMessage,
-      identifiers: parsed,
-      timeline: [
-        ...item.timeline,
-        {
-          id: `evt-${item.timeline.length + 1}`,
-          title: 'Парсинг выполнен',
-          detail: `Найдены service=${serviceLabel[parsed.service]}, order_id=${parsed.orderId ?? 'нет'}, transaction_id=${parsed.transactionId ?? 'нет'}`,
-          time: formatNow(),
-          status: parsed.confidence < 70 ? 'warning' : 'success',
-        },
-      ],
-    }));
-  };
+  const runCaseAction = async (action: (token: string, caseId: string, message: string) => Promise<DisputeCase>) => {
+    if (!operator || !selectedCase) {
+      return;
+    }
 
-  const runMcp = () => {
-    updateSelectedCase((item) => {
-      const parsed = parseIncomingMessage(draftMessage);
-      const connectors = item.connectors.length ? item.connectors : createConnectors();
-
-      return {
-        ...item,
-        status: parsed.service === 'unknown' ? 'attention' : 'processing',
-        message: draftMessage,
-        identifiers: parsed,
-        connectors: getNextConnectors(connectors, parsed),
-        timeline: [
-          ...item.timeline,
-          {
-            id: `evt-${item.timeline.length + 1}`,
-            title: parsed.service === 'unknown' ? 'Маршрутизация остановлена' : 'MCP-ответ получен',
-            detail:
-              parsed.service === 'unknown'
-                ? 'Сервис не определен, нужен ручной выбор'
-                : `Запрос направлен в ${serviceLabel[parsed.service]}`,
-            time: formatNow(),
-            status: parsed.service === 'unknown' ? 'warning' : 'success',
-          },
-        ],
-      };
-    });
-  };
-
-  const generateResult = () => {
-    updateSelectedCase((item) => {
-      const parsed = parseIncomingMessage(draftMessage);
-
-      return {
-        ...item,
-        status: parsed.service === 'unknown' ? 'attention' : 'resolved',
-        message: draftMessage,
-        identifiers: parsed,
-        result: buildOperatorAnswer(parsed, item.amount, item.customerName),
-        timeline: [
-          ...item.timeline,
-          {
-            id: `evt-${item.timeline.length + 1}`,
-            title: 'Ответ сформирован',
-            detail: parsed.service === 'unknown' ? 'Добавлен комментарий для ручной проверки' : 'Итог готов для передачи в НСПК',
-            time: formatNow(),
-            status: parsed.service === 'unknown' ? 'warning' : 'success',
-          },
-        ],
-      };
-    });
+    setError('');
+    try {
+      applyCaseUpdate(await action(operator.token, selectedCase.id, draftMessage));
+    } catch {
+      setError('Backend не смог выполнить действие по кейсу');
+    }
   };
 
   const copyResult = async () => {
-    if (selectedCase.result) {
+    if (selectedCase?.result) {
       await navigator.clipboard?.writeText(selectedCase.result);
     }
   };
@@ -119,9 +101,19 @@ function App() {
     return <LoginView onLogin={setOperator} />;
   }
 
+  if (isLoading || !selectedCase) {
+    return (
+      <div className="app-shell">
+        <Topbar cases={cases} operator={operator} onLogout={() => setOperator(null)} />
+        <p className="empty-queue">{isLoading ? 'Загружаем очередь...' : 'Нет доступных кейсов'}</p>
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
       <Topbar cases={cases} operator={operator} onLogout={() => setOperator(null)} />
+      {error ? <p className="form-error">{error}</p> : null}
 
       <div className="workspace">
         <QueuePanel cases={cases} selectedId={selectedCase.id} onSelect={selectCase} />
@@ -131,11 +123,18 @@ function App() {
           parsedPreview={parsedPreview}
           onDraftChange={setDraftMessage}
           onResetDraft={() => setDraftMessage(selectedCase.message)}
-          onParse={applyParsing}
-          onRunMcp={runMcp}
-          onGenerateResult={generateResult}
+          onParse={() => runCaseAction(parseCase)}
+          onRunMcp={() => runCaseAction(runCaseMcp)}
+          onGenerateResult={() => runCaseAction(generateCaseResult)}
           onCopyResult={copyResult}
-          onResultChange={(result) => updateSelectedCase((item) => ({ ...item, result }))}
+          onResultChange={(result) => {
+            if (!operator || !selectedCase) {
+              return;
+            }
+            updateCaseResult(operator.token, selectedCase.id, result)
+              .then(applyCaseUpdate)
+              .catch(() => setError('Не удалось сохранить итоговый ответ'));
+          }}
         />
         <InspectorPanel selectedCase={selectedCase} />
       </div>

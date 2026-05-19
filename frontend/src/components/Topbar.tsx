@@ -1,4 +1,5 @@
 import { LogOut } from 'lucide-react';
+import { getQueueSummary } from '../features/disputes/queue';
 import type { DisputeCase, Operator } from '../types';
 
 type TopbarProps = {
@@ -8,8 +9,7 @@ type TopbarProps = {
 };
 
 export function Topbar({ cases, operator, onLogout }: TopbarProps) {
-  const resolvedCount = cases.filter((item) => item.status === 'resolved').length;
-  const attentionCount = cases.filter((item) => item.status === 'attention').length;
+  const queueSummary = getQueueSummary(cases);
 
   return (
     <header className="topbar">
@@ -21,15 +21,15 @@ export function Topbar({ cases, operator, onLogout }: TopbarProps) {
       <div className="topbar__right">
         <div className="metrics-strip" aria-label="Сводка очереди">
           <div className="metric">
-            <span>{cases.length}</span>
-            <small>в очереди</small>
+            <span>{queueSummary.active}</span>
+            <small>активно</small>
           </div>
           <div className="metric metric--amber">
-            <span>{attentionCount}</span>
+            <span>{queueSummary.attention}</span>
             <small>ручная проверка</small>
           </div>
           <div className="metric metric--green">
-            <span>{resolvedCount}</span>
+            <span>{queueSummary.resolved}</span>
             <small>готово</small>
           </div>
         </div>

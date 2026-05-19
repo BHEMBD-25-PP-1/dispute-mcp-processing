@@ -37,8 +37,9 @@ export type TimelineEvent = {
 
 export type Operator = {
   name: string;
-  email: string;
+  username: string;
   role: string;
+  token: string;
 };
 
 export type DisputeCase = {
