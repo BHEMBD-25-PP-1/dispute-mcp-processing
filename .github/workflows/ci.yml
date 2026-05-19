@@ -90,13 +90,18 @@ jobs:
       - name: Configure GitHub Pages
         if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       - name: Upload GitHub Pages artifact
         if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         uses: actions/upload-pages-artifact@v3
         with:
+          path: frontend/dist
+
+      - name: Upload frontend build artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frontend-dist
           path: frontend/dist
 
   docker:
