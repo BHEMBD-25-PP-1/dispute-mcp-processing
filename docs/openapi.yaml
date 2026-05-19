@@ -1,14 +1,38 @@
 openapi: 3.0.3
 info:
   title: Dispute Processing API
-  version: 1.0.0
+  version: 1.1.0
   description: |
-    API для кабинета операциониста.
-    Все запросы требуют Bearer Token.
-    Authorization: Bearer <JWT_TOKEN>
+    REST API кабинета операциониста для обработки диспутов НСПК.
+
+    Базовый префикс: `/api/v1`.
+
+    **Аутентификация:** для защищённых методов передавайте заголовок
+    `Authorization: Bearer <JWT_TOKEN>`. Токен выдаётся через `POST /login`.
+
+    **Идемпотентность:** `POST /disputes/process` поддерживает заголовок
+    `Idempotency-Key` — повторный запрос с тем же ключом и телом вернёт
+    сохранённый результат без повторной обработки.
+
+    **Корреляция:** опциональный заголовок `X-Correlation-Id` связывает
+    запросы с событиями в журнале `dispute_events` и публикациями в Kafka
+    (после commit в БД).
 
 servers:
+  - url: http://localhost:8000/api/v1
+    description: Локальная разработка
   - url: /api/v1
+    description: Относительный URL (за reverse-proxy)
+
+tags:
+  - name: auth
+    description: Аутентификация и учётная запись
+  - name: admin
+    description: Администрирование пользователей
+  - name: disputes
+    description: Обработка диспутов (персистентный workflow)
+  - name: operator-cases
+    description: Демо-кейсы рабочего места оператора
 
 security:
   - BearerAuth: []
@@ -16,8 +40,10 @@ security:
 paths:
   /login:
     post:
-      summary: Аутентификация оператора
-      description: Получение JWT токена для доступа к API
+      tags: [auth]
+      summary: Аутентификация
+      description: Получение JWT для доступа к защищённым методам API.
+      security: []
       requestBody:
         required: true
         content:
@@ -32,145 +58,39 @@ paths:
               schema:
                 $ref: '#/components/schemas/LoginResponse'
         '401':
-          description: Неверные учётные данные
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
 
-  /disputes:
-    post:
-      summary: Создать диспут
+  /change-password:
+    patch:
+      tags: [auth]
+      summary: Сменить пароль
+      description: Пользователь меняет свой пароль (требуется текущий пароль).
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateDisputeRequest'
+              $ref: '#/components/schemas/ChangePasswordRequest'
       responses:
-        '201':
-          description: Диспут создан
+        '200':
+          description: Пароль изменён
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CreateDisputeResponse'
+                $ref: '#/components/schemas/MessageResponse'
         '400':
-          description: Ошибка валидации
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ValidationErrorResponse'
+          $ref: '#/components/responses/ValidationError'
         '401':
-          description: Не авторизован - отсутствует или невалидный токен
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthErrorResponse'
-        '403':
-          description: Доступ запрещён
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ForbiddenErrorResponse'
-
-
-    get:
-      summary: Получить список диспутов
-      parameters:
-        - name: status
-          in: query
-          schema:
-            type: string
-            enum: [NEW, PROCESSING, DONE, FAILED, NEEDS_REVIEW]
-          description: Фильтр по статусу. Если не указан — возвращаются все диспуты.
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-        - name: offset
-          in: query
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
-      responses:
-        '200':
-          description: Список диспутов
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  items:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/DisputeListItem'
-                  total:
-                    type: integer
-                  limit:
-                    type: integer
-                  offset:
-                    type: integer
-        '401':
-          description: Не авторизован - отсутствует или невалидный токен
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthErrorResponse'
-        '403':
-          description: Доступ запрещён
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ForbiddenErrorResponse'
-
-  /disputes/{id}:
-    get:
-      summary: Получить диспут по ID
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Детали диспута
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DisputeDetails'
-        '401':
-          description: Не авторизован - отсутствует или невалидный токен
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthErrorResponse'
-        '403':
-          description: Доступ запрещён
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ForbiddenErrorResponse'
-        '404':
-          description: Не найден
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/NotFoundErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
 
   /admin/users:
     get:
-      summary: Получить список пользователей
-      security:
-        - BearerAuth: [ ]
-      description: Доступ только для пользователей с ролью ADMIN.
+      tags: [admin]
+      summary: Список пользователей
+      description: Доступно только пользователям с ролью `ADMIN`.
       responses:
         '200':
-          description: Успешный ответ
+          description: Список пользователей
           content:
             application/json:
               schema:
@@ -178,22 +98,13 @@ paths:
                 items:
                   $ref: '#/components/schemas/UserResponse'
         '401':
-          description: Не авторизован
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Недостаточно прав - требуется роль ADMIN
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ForbiddenErrorResponse'
+          $ref: '#/components/responses/Forbidden'
     post:
-      summary: Создать нового пользователя
-      security:
-        - BearerAuth: [ ]
-      description: Доступ только для пользователей с ролью ADMIN.
+      tags: [admin]
+      summary: Создать пользователя
+      description: Доступно только пользователям с ролью `ADMIN`.
       requestBody:
         required: true
         content:
@@ -208,395 +119,725 @@ paths:
               schema:
                 $ref: '#/components/schemas/UserResponse'
         '400':
-          description: Ошибка валидации - отсутствуют обязательные поля, username уже существует, роль указана неверно
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ValidationErrorResponse'
+          $ref: '#/components/responses/ValidationError'
         '401':
-          description: Не авторизован
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Недостаточно прав - требуется роль ADMIN
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ForbiddenErrorResponse'
+          $ref: '#/components/responses/Forbidden'
 
-  /change-password:
-    patch:
-      summary: Сменить пароль
-      description: Пользователь меняет пароль, выданный администратором
-      security:
-        - BearerAuth: []
+  /disputes/process:
+    post:
+      tags: [disputes]
+      summary: Обработать текст диспута
+      description: |
+        Принимает текст обращения, парсит идентификаторы, классифицирует сервис,
+        запрашивает MCP и сохраняет результат в БД с append-only журналом событий.
+
+        При повторе с тем же `Idempotency-Key` и тем же телом возвращается
+        сохранённый ответ (`replayed: true`).
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CorrelationId'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - old_password
-                - new_password
-              properties:
-                old_password:
-                  type: string
-                  format: password
-                  description: Текущий пароль
-                  example: "oldPass123"
-                new_password:
-                  type: string
-                  format: password
-                  description: Новый пароль
-                  example: "newPass456"
+              $ref: '#/components/schemas/DisputeProcessRequest'
       responses:
         '200':
-          description: Пароль успешно изменён
+          description: Диспут обработан или возвращён идемпотентный replay
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Password changed successfully"
+                $ref: '#/components/schemas/DisputeProcessResponse'
         '400':
-          description: Ошибка валидации (неверный старый пароль, новый пароль слишком слабый)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ValidationErrorResponse'
+          $ref: '#/components/responses/ValidationError'
         '401':
-          description: Не авторизован
+          $ref: '#/components/responses/Unauthorized'
+
+  /disputes/{dispute_id}/claim:
+    post:
+      tags: [disputes]
+      summary: Захватить диспут оператором
+      description: |
+        Оптимистическая блокировка: клиент передаёт `expected_version`.
+        При успехе диспут назначается текущему оператору на `lock_minutes` минут.
+      parameters:
+        - $ref: '#/components/parameters/DisputeId'
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DisputeClaimRequest'
+      responses:
+        '200':
+          description: Диспут захвачен
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuthErrorResponse'
+                $ref: '#/components/schemas/DisputeStateResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/VersionConflict'
+        '422':
+          $ref: '#/components/responses/InvalidTransition'
+
+  /disputes/{dispute_id}/status:
+    patch:
+      tags: [disputes]
+      summary: Обновить статус диспута
+      description: |
+        Смена статуса с проверкой допустимых переходов и версии записи.
+        Допустимые статусы: `accepted`, `processing`, `attention`, `resolved`.
+      parameters:
+        - $ref: '#/components/parameters/DisputeId'
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DisputeStatusUpdateRequest'
+      responses:
+        '200':
+          description: Статус обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DisputeStateResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/VersionConflict'
+        '422':
+          $ref: '#/components/responses/InvalidTransition'
+
+  /operator/cases:
+    get:
+      tags: [operator-cases]
+      summary: Список демо-кейсов
+      description: |
+        Возвращает шаблоны кейсов для UI оператора (stateless-копии на бэкенде).
+        Каждый вызов действий (`parse`, `mcp`, `result`) работает с копией шаблона.
+      responses:
+        '200':
+          description: Список кейсов
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OperatorCase'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /operator/cases/{case_id}/parse:
+    post:
+      tags: [operator-cases]
+      summary: Распарсить кейс
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CaseActionRequest'
+      responses:
+        '200':
+          description: Кейс с результатом парсинга
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatorCase'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /operator/cases/{case_id}/mcp:
+    post:
+      tags: [operator-cases]
+      summary: Запросить MCP по кейсу
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CaseActionRequest'
+      responses:
+        '200':
+          description: Кейс с обновлёнными коннекторами MCP
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatorCase'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /operator/cases/{case_id}/result:
+    post:
+      tags: [operator-cases]
+      summary: Сформировать итог по кейсу
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CaseActionRequest'
+      responses:
+        '200':
+          description: Кейс с сформированным ответом
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatorCase'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [operator-cases]
+      summary: Обновить итог кейса вручную
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CaseResultUpdateRequest'
+      responses:
+        '200':
+          description: Кейс с обновлённым итогом
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatorCase'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
 components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    DisputeId:
+      name: dispute_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Идентификатор диспута
+    CaseId:
+      name: case_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Идентификатор демо-кейса (например, `DSP-1042`)
+      example: DSP-1042
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema:
+        type: string
+      description: Ключ идемпотентности для `POST /disputes/process`
+    CorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      schema:
+        type: string
+        format: uuid
+      description: Идентификатор корреляции для журнала событий
+
+  responses:
+    Unauthorized:
+      description: Не авторизован — отсутствует или невалидный токен
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            detail:
+              message: Invalid token
+              code: AUTH_ERROR
+    Forbidden:
+      description: Недостаточно прав
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            detail:
+              message: Forbidden
+              code: FORBIDDEN_ERROR
+    ValidationError:
+      description: Ошибка валидации входных данных
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationErrorResponse'
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            detail:
+              message: Dispute not found
+              code: NOT_FOUND
+    VersionConflict:
+      description: Конфликт версии или блокировки
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            detail:
+              message: Version mismatch
+              code: VERSION_CONFLICT
+    InvalidTransition:
+      description: Недопустимый переход статуса
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            detail:
+              message: Invalid status transition
+              code: INVALID_TRANSITION
 
   schemas:
-
     LoginRequest:
       type: object
-      required:
-        - username
-        - password
+      required: [username, password]
       properties:
         username:
           type: string
-          description: Имя пользователя оператора
-          example: "operator"
+          example: operator
         password:
           type: string
           format: password
-          description: Пароль
-          example: "password123"
+          example: operator123
 
     LoginResponse:
       type: object
-      required:
-        - access_token
-        - token_type
+      required: [access_token, token_type]
       properties:
         access_token:
           type: string
-          description: JWT токен для Bearer авторизации
-          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+          description: JWT для Bearer-авторизации
         token_type:
           type: string
-          description: Тип токена
-          example: "bearer"
+          example: bearer
 
-
-    CreateDisputeRequest:
+    ChangePasswordRequest:
       type: object
-      required:
-        - rrn
-        - termInstId
-        - amount
-        - date
-        - time
-        - card_mask
-        - transaction_id
+      required: [old_password, new_password]
       properties:
-        rrn:
+        old_password:
           type: string
-          description: Retrieval Reference Number (из банка)
-          example: "123456789012345"
-        termInstId:
+          format: password
+        new_password:
           type: string
-          description: ID банка-участника
-          example: "00012345"
-        amount:
-          type: number
-          description: Сумма списания
-          example: 499.00
-        date:
-          type: string
-          format: date
-          description: Дата транзакции
-          example: "2026-05-15"
-        time:
-          type: string
-          description: Время транзакции
-          example: "14:30:00"
-        card_mask:
-          type: string
-          description: Маскированный номер карты
-          example: "****1234"
-        transaction_id:
-          type: string
-          description: Внутренний ID НСПК
-          example: "TXN-H9O"
-        order_id:
-          type: string
-          nullable: true
-          description: ID заказа в сервисе (если известен)
-          example: "RIDE-7777"
-        user_id:
-          type: string
-          nullable: true
-          description: Телефон или email пользователя
-          example: "+79001234567"
-        merchant_name:
-          type: string
-          nullable: true
-          description: Название сервиса (Такси/Афиша)
-          example: "Яндекс.Такси"
-        user_statement:
-          type: string
-          nullable: true
-          description: Исходный текст жалобы пользователя
-          example: "водитель не приехал, деньги списали"
+          format: password
 
-
-    CreateDisputeResponse:
-      type: object
-      required:
-        - id
-        - status
-        - created_at
-      properties:
-        id:
-          type: string
-          description: UUID созданного диспута
-          example: "550e8400-e29b-41d4-a716-446655440000"
-        status:
-          type: string
-          enum: [NEW, PROCESSING, DONE, FAILED, NEEDS_REVIEW]
-          description: |
-            NEW — создан, ожидает обработки
-            PROCESSING — в процессе обработки
-            DONE — обработан успешно
-            FAILED — ошибка обработки
-            NEEDS_REVIEW — требуется ручное рассмотрение
-        created_at:
-          type: string
-          format: date-time
-          example: "2026-05-07T10:30:00Z"
-
-    DisputeListItem:
+    MessageResponse:
       type: object
       properties:
-        id:
+        message:
           type: string
-        created_at:
-          type: string
-          format: date-time
-        status:
-          type: string
-          enum: [NEW, PROCESSING, DONE, FAILED, NEEDS_REVIEW]
-        service:
-          type: string
-          example: "Yandex taxi"
-        amount:
-          type: number
-        preview:
-          type: string
-          example: "водитель не приехал"
+          example: Password changed successfully
 
-    DisputeDetails:
-      type: object
-      properties:
-        id:
-          type: string
-        status:
-          type: string
-          enum: [NEW, PROCESSING, DONE, FAILED, NEEDS_REVIEW]
-
-        input:
-          $ref: '#/components/schemas/CreateDisputeRequest'
-
-        parsed:
-          type: object
-          description: Результат парсинга входящего сообщения — все извлечённые идентификаторы и характеристики
-          properties:
-            transaction_id:
-              type: string
-              nullable: true
-              description: ID транзакции
-              example: "TXN-H9O"
-            order_id:
-              type: string
-              nullable: true
-              description: ID заказа в сервисе
-              example: "RIDE-7777"
-            user_id:
-              type: string
-              nullable: true
-              description: ID пользователя (телефон, email)
-              example: "+79001234567"
-            card_mask:
-              type: string
-              nullable: true
-              description: Маскированный номер карты
-              example: "****1234"
-            amount:
-              type: number
-              nullable: true
-              description: Сумма списания
-              example: 499.00
-            date:
-              type: string
-              format: date
-              nullable: true
-              description: Дата транзакции
-              example: "2026-05-15"
-            time:
-              type: string
-              nullable: true
-              description: Время транзакции
-              example: "14:30:00"
-            merchant_name:
-              type: string
-              nullable: true
-              description: Название сервиса
-              example: "Яндекс.Такси"
-            service_hint:
-              type: string
-              nullable: true
-              description: Определённый тип сервиса (taxi/afisha)
-              example: "taxi"
-            problem:
-              type: string
-              nullable: true
-              description: Краткое описание проблемы, извлечённое из текста
-              example: "водитель не приехал"
-            user_statement:
-              type: string
-              nullable: true
-              description: Исходный текст жалобы пользователя
-              example: "водитель не приехал, деньги списали"
-
-        result:
-          type: object
-          properties:
-            decision:
-              type: string
-              enum: [REFUND, DECLINED, NOT_FOUND, NEEDS_REVIEW]
-              description: |
-                REFUND — принято решение в пользу пользователя. Средства подлежат возврату.
-                DECLINED — в возврате отказано. Транзакция подтверждена, услуга оказана корректно.
-                NOT_FOUND — данные не найдены. По указанным идентификаторам ничего не обнаружено.
-                NEEDS_REVIEW — недостаточно данных для принятия решения. Требуется ручное рассмотрение.
-            text:
-              type: string
-              description: Обоснованный ответ на русском языке
-              example: "Поездка состоялась 15.05.2026, маршрут А→Б, сумма списана корректно"
+    UserRole:
+      type: string
+      enum: [ADMIN, OPERATOR]
 
     UserResponse:
       type: object
+      required: [id, username, role, createdAt]
       properties:
         id:
           type: string
         username:
           type: string
         role:
-          type: string
-          enum: [ ADMIN, OPERATOR ]
+          $ref: '#/components/schemas/UserRole'
         createdAt:
           type: string
           format: date-time
 
     UserCreateRequest:
       type: object
-      required:
-        - username
-        - password
+      required: [username, password]
       properties:
         username:
           type: string
-          description: Уникальное имя пользователя
-          example: "operator1"
+          example: operator1
         password:
           type: string
           format: password
-          description: Пароль пользователя
-          example: "TempPass123"
         role:
-          type: string
-          enum: [OPERATOR, ADMIN]
+          $ref: '#/components/schemas/UserRole'
           default: OPERATOR
 
-    AuthErrorResponse:
+    DisputeProcessRequest:
       type: object
-      required:
-        - message
-        - code
+      required: [text]
       properties:
-        message:
+        text:
           type: string
-          example: "Invalid token"
-        code:
-          type: string
-          example: "AUTH_ERROR"
+          description: Текст обращения / диспута от НСПК
+          example: |
+            От НСПК поступил диспут: transaction_id=TXN-98765, order_id=TAXI-240518.
+            Клиент сообщает, что поездка не состоялась, но оплата списана.
 
-    ForbiddenErrorResponse:
+    DisputeProcessResponse:
       type: object
-      required:
-        - message
-        - code
+      required: [status, parsed, nlu, mcp, result, replayed]
+      properties:
+        dispute_id:
+          type: string
+          format: uuid
+          nullable: true
+        idempotency_key:
+          type: string
+          nullable: true
+        replayed:
+          type: boolean
+          description: true, если ответ возвращён из идемпотентного replay
+        version:
+          type: integer
+          nullable: true
+        assigned_to:
+          type: string
+          nullable: true
+          description: ID оператора, если диспут назначен
+        locked_until:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          $ref: '#/components/schemas/DisputeWorkflowStatus'
+        parsed:
+          $ref: '#/components/schemas/ParsedDispute'
+        nlu:
+          $ref: '#/components/schemas/NluResult'
+        mcp:
+          $ref: '#/components/schemas/McpResult'
+        result:
+          type: string
+          description: Итоговый текст ответа для оператора / НСПК
+
+    DisputeClaimRequest:
+      type: object
+      required: [expected_version]
+      properties:
+        expected_version:
+          type: integer
+          minimum: 1
+        lock_minutes:
+          type: integer
+          minimum: 1
+          default: 15
+          description: Длительность эксклюзивной блокировки в минутах
+
+    DisputeStatusUpdateRequest:
+      type: object
+      required: [status, expected_version]
+      properties:
+        status:
+          $ref: '#/components/schemas/DisputeWorkflowStatus'
+        expected_version:
+          type: integer
+          minimum: 1
+
+    DisputeStateResponse:
+      type: object
+      required: [dispute_id, status, version]
+      properties:
+        dispute_id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/DisputeWorkflowStatus'
+        version:
+          type: integer
+        assigned_to:
+          type: string
+          nullable: true
+        locked_until:
+          type: string
+          format: date-time
+          nullable: true
+
+    DisputeWorkflowStatus:
+      type: string
+      description: |
+        Статусы персистентного workflow:
+        - `accepted` — принят в систему
+        - `processing` — в обработке
+        - `attention` — требует внимания оператора
+        - `resolved` — завершён
+      enum: [accepted, processing, attention, resolved]
+
+    ParsedDispute:
+      type: object
+      additionalProperties: true
+      description: Результат парсинга текста диспута
+      properties:
+        transaction_id:
+          type: string
+          nullable: true
+          example: TXN-98765
+        order_id:
+          type: string
+          nullable: true
+          example: TAXI-240518
+        user_id:
+          type: string
+          nullable: true
+        service_hint:
+          type: string
+          nullable: true
+          enum: [taxi, afisha, null]
+
+    NluResult:
+      type: object
+      additionalProperties: true
+      properties:
+        service:
+          type: string
+          enum: [taxi, afisha, unknown]
+        confidence:
+          type: integer
+          minimum: 0
+          maximum: 100
+        source:
+          type: string
+          description: Источник классификации (rules, llm, explicit_hint и т.д.)
+
+    McpResult:
+      type: object
+      additionalProperties: true
+      properties:
+        status:
+          type: string
+          enum: [found, not_found, skipped]
+        service:
+          type: string
+          nullable: true
+        data:
+          type: object
+          additionalProperties: true
+          nullable: true
+
+    CaseActionRequest:
+      type: object
+      required: [message]
       properties:
         message:
           type: string
-          example: "Forbidden"
+          description: Текст обращения для парсинга / MCP / генерации итога
+
+    CaseResultUpdateRequest:
+      type: object
+      required: [result]
+      properties:
+        result:
+          type: string
+          description: Ручная правка итогового ответа оператором
+
+    OperatorCase:
+      type: object
+      required:
+        - id
+        - title
+        - partner
+        - channel
+        - priority
+        - status
+        - receivedAt
+        - amount
+        - customerName
+        - message
+        - identifiers
+        - connectors
+        - timeline
+        - result
+      properties:
+        id:
+          type: string
+          example: DSP-1042
+        title:
+          type: string
+        partner:
+          type: string
+          example: НСПК
+        channel:
+          type: string
+          example: HTTP
+        priority:
+          type: string
+          enum: [P1, P2, P3]
+        status:
+          $ref: '#/components/schemas/OperatorCaseStatus'
+        receivedAt:
+          type: string
+          example: "09:41"
+        amount:
+          type: string
+          example: "1 280 ₽"
+        customerName:
+          type: string
+        message:
+          type: string
+        identifiers:
+          $ref: '#/components/schemas/OperatorIdentifiers'
+        connectors:
+          type: array
+          items:
+            $ref: '#/components/schemas/McpConnector'
+        timeline:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimelineEvent'
+        result:
+          type: string
+
+    OperatorCaseStatus:
+      type: string
+      enum: [new, processing, attention, resolved]
+
+    OperatorIdentifiers:
+      type: object
+      required: [service, confidence]
+      properties:
+        orderId:
+          type: string
+          nullable: true
+        transactionId:
+          type: string
+          nullable: true
+        userId:
+          type: string
+          nullable: true
+        service:
+          type: string
+          enum: [taxi, afisha, unknown]
+        confidence:
+          type: integer
+          minimum: 0
+          maximum: 100
+
+    McpConnector:
+      type: object
+      required: [id, name, service, status, sla, confidence, fields]
+      properties:
+        id:
+          type: string
+          enum: [taxi, afisha]
+        name:
+          type: string
+        service:
+          type: string
+          enum: [taxi, afisha]
+        status:
+          type: string
+          enum: [ready, queued, running, done, failed]
+        sla:
+          type: string
+        confidence:
+          type: integer
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConnectorField'
+
+    ConnectorField:
+      type: object
+      required: [label, value]
+      properties:
+        label:
+          type: string
+        value:
+          type: string
+
+    TimelineEvent:
+      type: object
+      required: [id, title, detail, time, status]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        detail:
+          type: string
+        time:
+          type: string
+        status:
+          type: string
+          enum: [info, success, warning]
+
+    ErrorDetail:
+      type: object
+      required: [message, code]
+      properties:
+        message:
+          type: string
         code:
           type: string
-          example: "FORBIDDEN_ERROR"
+
+    ErrorResponse:
+      type: object
+      required: [detail]
+      description: Стандартный формат ошибок FastAPI (HTTPException)
+      properties:
+        detail:
+          $ref: '#/components/schemas/ErrorDetail'
+
+    ValidationErrorDetail:
+      allOf:
+        - $ref: '#/components/schemas/ErrorDetail'
+        - type: object
+          properties:
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                  msg:
+                    type: string
 
     ValidationErrorResponse:
       type: object
-      required:
-        - message
-        - code
-        - details
+      required: [detail]
       properties:
-        message:
-          type: string
-          example: "Ошибка валидации"
-        code:
-          type: string
-          example: "VALIDATION_ERROR"
-
-    NotFoundErrorResponse:
-      type: object
-      required:
-        - message
-        - code
-      properties:
-        message:
-          type: string
-          example: "not found"
-        code:
-          type: string
-          example: "NOT_FOUND_ERROR"
-
-  securitySchemes:
-    BearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
+        detail:
+          $ref: '#/components/schemas/ValidationErrorDetail'
