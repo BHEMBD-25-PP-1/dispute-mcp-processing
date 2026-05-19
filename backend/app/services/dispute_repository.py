@@ -13,6 +13,7 @@ from app.services.dispute_errors import (
 )
 from app.services.dispute_state import can_transition, is_final_status
 from app.services.event_security import sign_event
+from app.services.event_publisher import publish_dispute_event
 
 
 async def find_existing_dispute(
@@ -113,6 +114,19 @@ async def append_event(
         correlation_id,
     )
     return event
+
+
+async def publish_events(events: list[DisputeEvent]) -> None:
+    for event in events:
+        try:
+            await publish_dispute_event(event)
+        except Exception:
+            logger.exception(
+                "Kafka event publish failed after DB commit: dispute_id=%s sequence=%s event_type=%s",
+                event.dispute_id,
+                event.sequence,
+                event.event_type,
+            )
 
 
 async def update_dispute_state(
@@ -263,7 +277,7 @@ async def claim_dispute(
 
     await db.flush()
     dispute = await get_dispute(db, dispute_id)
-    await append_event(
+    event = await append_event(
         db,
         dispute_id=dispute.id,
         event_type="dispute.claimed",
@@ -276,6 +290,7 @@ async def claim_dispute(
         correlation_id=correlation_id,
     )
     await db.commit()
+    await publish_events([event])
     await db.refresh(dispute)
     logger.info(
         "Dispute claimed: dispute_id=%s operator_id=%s version=%s locked_until=%s correlation_id=%s",
@@ -327,7 +342,7 @@ async def change_dispute_status(
 
     await db.flush()
     dispute = await get_dispute(db, dispute_id)
-    await append_event(
+    event = await append_event(
         db,
         dispute_id=dispute.id,
         event_type="dispute.status_changed",
@@ -336,6 +351,7 @@ async def change_dispute_status(
         correlation_id=correlation_id,
     )
     await db.commit()
+    await publish_events([event])
     await db.refresh(dispute)
     logger.info(
         "Dispute status changed: dispute_id=%s operator_id=%s status=%s version=%s correlation_id=%s",

@@ -9,6 +9,7 @@ from app.services.dispute_repository import (
     append_event,
     create_dispute,
     find_existing_dispute,
+    publish_events,
     update_dispute_state,
 )
 from app.services.idempotency import build_request_hash
@@ -46,7 +47,7 @@ async def _record_replay(
         correlation_id,
         producer,
     )
-    await append_event(
+    replay_event = await append_event(
         db,
         dispute_id=dispute.id,
         event_type="dispute.replayed",
@@ -55,6 +56,7 @@ async def _record_replay(
         correlation_id=correlation_id,
     )
     await db.commit()
+    await publish_events([replay_event])
     await db.refresh(dispute)
     return build_process_response(dispute, replayed=True)
 
@@ -131,7 +133,7 @@ async def submit_dispute(
             producer=producer,
             correlation_id=correlation_id,
         )
-    await append_event(
+    accepted_event = await append_event(
         db,
         dispute_id=dispute.id,
         event_type="dispute.accepted",
@@ -139,7 +141,7 @@ async def submit_dispute(
         producer=producer,
         correlation_id=correlation_id,
     )
-    await append_event(
+    processing_event = await append_event(
         db,
         dispute_id=dispute.id,
         event_type="dispute.processing_started",
@@ -163,7 +165,7 @@ async def submit_dispute(
         service=response.get("nlu", {}).get("service", "unknown"),
         response=response,
     )
-    await append_event(
+    final_event = await append_event(
         db,
         dispute_id=dispute.id,
         event_type=f"dispute.{response['status']}",
@@ -172,6 +174,7 @@ async def submit_dispute(
         correlation_id=correlation_id,
     )
     await db.commit()
+    await publish_events([accepted_event, processing_event, final_event])
     await db.refresh(dispute)
     logger.info(
         "Dispute persisted: dispute_id=%s status=%s version=%s last_event_sequence=%s correlation_id=%s",

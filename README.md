@@ -195,7 +195,7 @@ curl -X POST http://localhost:8000/api/v1/disputes/process \
 ## Надежность обработки
 
 * **Идемпотентность:** повтор с тем же `Idempotency-Key` или тем же нормализованным текстом возвращает уже сохраненный результат и пишет событие `dispute.replayed`.
-* **Eventual consistency:** обработка пока выполняется синхронно внутри API, но состояние уже хранится как `accepted -> processing_started -> resolved/attention`. Этот слой можно заменить на реальную очередь и воркер без изменения доменной логики.
+* **Eventual consistency:** обработка пока выполняется синхронно внутри API, но состояние уже хранится как `accepted -> processing_started -> resolved/attention`, а события после фиксации в БД публикуются в Apache Kafka topic `dispute-events`.
 * **Безопасность событий:** каждое событие в `dispute_events` имеет монотонный `sequence`, уникальный в рамках диспута, и подписывается HMAC на основе `EVENT_SIGNATURE_SECRET`, `sequence`, `payload`, `event_type`, `producer` и `correlation_id`.
 * **Защита от одновременной работы операторов:** у диспута есть `version`, `assigned_to` и `locked_until`. Оператор должен сначала вызвать `POST /api/v1/disputes/{id}/claim` с `expected_version`, после чего изменения статуса выполняются через `PATCH /api/v1/disputes/{id}/status` также с `expected_version`.
 * **Optimistic locking:** если другой оператор уже изменил кейс, версия не совпадет и API вернет `409 Conflict` вместо перезаписи данных.
@@ -222,21 +222,10 @@ flowchart LR
     Services --> McpClient
 
     Models --> Postgres[(PostgreSQL)]
+    Services --> Kafka[(Apache Kafka<br/>dispute-events)]
     McpClient --> Taxi[Taxi MCP mock]
     McpClient --> Afisha[Afisha MCP mock]
 
-    subgraph DevOps[DevOps]
-        Compose[Docker Compose]
-        CI[GitHub Actions]
-    end
-
-    Compose -. запускает .-> Frontend
-    Compose -. запускает .-> Backend
-    Compose -. запускает .-> Postgres
-    Compose -. запускает .-> Taxi
-    Compose -. запускает .-> Afisha
-    CI -. проверяет .-> Backend
-    CI -. проверяет .-> Frontend
 ```
 
 ### Поток обработки диспута
@@ -245,4 +234,5 @@ flowchart LR
 2. Frontend получает рабочую очередь из `GET /api/v1/operator/cases`.
 3. Backend выполняет парсинг, классификацию сервиса и обращение к нужному MCP-адаптеру.
 4. Для реальной обработки диспута используется durable workflow: `disputes` + `dispute_events`, идемпотентность, HMAC-подписи событий и optimistic locking.
-5. Frontend отображает результат и журнал действий, но не хранит бизнес-логику обработки.
+5. После фиксации события в БД backend публикует его в Apache Kafka topic `dispute-events` для асинхронных consumers.
+6. Frontend отображает результат и журнал действий, но не хранит бизнес-логику обработки.

@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     event_signature_secret: str = "dev-event-secret-change-me"
     seed_operator_username: str | None = None
     seed_operator_password: str | None = None
+    kafka_enabled: bool = False
+    kafka_bootstrap_servers: str = "localhost:9092"
+    kafka_events_topic: str = "dispute-events"
     log_level: str = "INFO"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
