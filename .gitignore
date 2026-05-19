@@ -5,6 +5,13 @@ frontend/.env.local
 frontend/*.tsbuildinfo
 frontend/vite.config.d.ts
 frontend/vite.config.js
+backend/.coverage
+backend/coverage.xml
+backend/.pytest_cache/
+backend/**/__pycache__/
 .idea/
 .env
+.coverage
+coverage.xml
+.pytest_cache/
 __pycache__/

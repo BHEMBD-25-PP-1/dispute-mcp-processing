@@ -1,0 +1,11 @@
+[run]
+omit =
+    app/api/*
+    app/main.py
+    app/core/database.py
+    app/llm/base.py
+    app/mcp/base.py
+
+[report]
+show_missing = True
+skip_empty = True

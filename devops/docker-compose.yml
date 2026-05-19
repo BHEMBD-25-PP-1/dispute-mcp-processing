@@ -1,0 +1,73 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: devops/Dockerfile
+    container_name: dispute-app
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://dispute:dispute@postgres:5432/dispute
+      LOG_LEVEL: INFO
+      MCP_TAXI_URL: ${MCP_TAXI_URL:-http://host.docker.internal:9001}
+      MCP_AFISHA_URL: ${MCP_AFISHA_URL:-http://host.docker.internal:9002}
+      MCP_REQUEST_TIMEOUT: "10"
+    volumes:
+      - ../backend/app:/app/app
+      - ../backend/tests:/app/tests
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: dispute-postgres
+    environment:
+      POSTGRES_USER: dispute
+      POSTGRES_PASSWORD: dispute
+      POSTGRES_DB: dispute
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dispute -d dispute"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  taxi-mock:
+    build:
+      context: ..
+      dockerfile: devops/Dockerfile
+    container_name: taxi-mock
+    ports:
+      - "9001:8000"
+    volumes:
+      - ../backend/mcp_servers:/app/mcp_servers
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: python mcp_servers/taxi_mock.py --transport=sse
+    restart: unless-stopped
+
+  afisha-mock:
+    build:
+      context: ..
+      dockerfile: devops/Dockerfile
+    container_name: afisha-mock
+    ports:
+      - "9002:8000"
+    volumes:
+      - ../backend/mcp_servers:/app/mcp_servers
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: python mcp_servers/afisha_mock.py --transport=sse
+    restart: unless-stopped
+
+volumes:
+  postgres-data:

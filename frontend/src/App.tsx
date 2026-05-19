@@ -5,9 +5,9 @@ import { LoginView } from './components/LoginView';
 import { QueuePanel } from './components/QueuePanel';
 import { Topbar } from './components/Topbar';
 import { serviceLabel } from './constants';
-import { createConnectors, mockDisputes } from './data/mockDisputes';
-import { getNextConnectors, formatNow } from './lib/caseProcessing';
-import { buildOperatorAnswer, parseIncomingMessage } from './lib/parser';
+import { createConnectors, mockDisputes } from './features/disputes/mockCases';
+import { buildOperatorAnswer, parseIncomingMessage } from './features/disputes/parser';
+import { getNextConnectors, formatNow } from './features/disputes/workflow';
 import type { DisputeCase, Operator } from './types';
 
 function App() {
