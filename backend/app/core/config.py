@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60
     event_signature_secret: str = "dev-event-secret-change-me"
+    seed_operator_username: str | None = None
+    seed_operator_password: str | None = None
     log_level: str = "INFO"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")

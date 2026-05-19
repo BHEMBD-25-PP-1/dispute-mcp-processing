@@ -1,7 +1,7 @@
 import { FormEvent, useState } from 'react';
 import { ExternalLink, KeyRound, LogIn, ShieldCheck, UserRound } from 'lucide-react';
-import { login } from '../api';
 import type { Operator } from '../types';
+import { login } from '../features/auth/api';
 
 type LoginViewProps = {
   onLogin: (operator: Operator) => void;

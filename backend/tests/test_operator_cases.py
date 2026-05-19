@@ -10,15 +10,18 @@ def test_operator_cases_are_served_from_backend():
 
 
 def test_parse_case_updates_identifiers_and_timeline():
+    original = operator_cases.list_cases()[0]
     case = operator_cases.parse_case(
         "DSP-1042",
         "transaction_id=TXN-98765, order_id=TAXI-240518 поездка не состоялась",
     )
+    fresh = operator_cases.list_cases()[0]
 
     assert case["identifiers"]["service"] == "taxi"
     assert case["identifiers"]["orderId"] == "TAXI-240518"
     assert case["status"] == "processing"
     assert case["timeline"][-1]["title"] == "Парсинг выполнен"
+    assert fresh == original
 
 
 def test_run_mcp_blocks_unknown_service():
@@ -33,6 +36,9 @@ def test_generate_result_uses_backend_processor():
         "DSP-1042",
         "transaction_id=TXN-98765, order_id=TAXI-240518 поездка не состоялась",
     )
+    fresh = operator_cases.list_cases()[0]
 
     assert case["status"] == "resolved"
     assert "Транзакция TXN-98765 подтверждена" in case["result"]
+    assert fresh["status"] == "new"
+    assert fresh["result"] == ""

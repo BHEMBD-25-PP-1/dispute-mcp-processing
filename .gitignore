@@ -9,6 +9,7 @@ backend/.coverage
 backend/coverage.xml
 backend/.pytest_cache/
 backend/**/__pycache__/
+backend/*.db
 .idea/
 .env
 .coverage

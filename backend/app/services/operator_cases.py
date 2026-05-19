@@ -59,7 +59,7 @@ def _base_timeline() -> list[dict[str, Any]]:
     ]
 
 
-_CASES: list[dict[str, Any]] = [
+CASE_TEMPLATES: list[dict[str, Any]] = [
     {
         "id": "DSP-1042",
         "title": "Списание за несостоявшуюся поездку",
@@ -166,14 +166,14 @@ def _event(case: dict[str, Any], title: str, detail: str, status: str) -> dict[s
 
 
 def _get_case(case_id: str) -> dict[str, Any]:
-    case = next((item for item in _CASES if item["id"] == case_id), None)
+    case = next((item for item in CASE_TEMPLATES if item["id"] == case_id), None)
     if not case:
         raise KeyError(case_id)
-    return case
+    return deepcopy(case)
 
 
 def list_cases() -> list[dict[str, Any]]:
-    return deepcopy(_CASES)
+    return deepcopy(CASE_TEMPLATES)
 
 
 def parse_case(case_id: str, message: str) -> dict[str, Any]:

@@ -98,7 +98,10 @@ frontend/
   src/
     components/      # UI-компоненты рабочего места оператора
     features/
-      disputes/      # UI helper-логика очереди
+      auth/           # авторизация оператора
+      disputes/       # API и helper-логика диспутов
+      workspace/      # состояние рабочего места оператора
+    shared/           # общий HTTP-клиент
     App.tsx
 devops/
   Dockerfile
@@ -199,78 +202,47 @@ curl -X POST http://localhost:8000/api/v1/disputes/process \
 * **Статусная машина:** разрешены только контролируемые переходы `accepted -> processing/attention/resolved`, `processing -> attention/resolved`, `attention -> processing/resolved`. Завершенный `resolved` кейс нельзя забрать или изменить.
 * **Аудит:** таблицы `disputes` и `dispute_events` позволяют восстановить результат обработки и историю решений.
 
-#### Общая архитектура
+## Общая архитектура
 
 ```mermaid
-graph TB
-    subgraph "Операторский интерфейс"
-        UI[React + Vite<br/>frontend]
-        Queue[Очередь диспутов]
-        Board[Рабочая область кейса]
-        Inspector[Журнал и контроль]
+flowchart LR
+    Operator[Оператор] --> Frontend[Frontend<br/>React + Vite]
+    Frontend -->|JWT + REST| Backend[Backend API<br/>FastAPI]
+
+    subgraph BackendApp[Backend]
+        Api[API endpoints]
+        Services[Services<br/>dispute workflow, auth, operator cases]
+        Models[Models<br/>users, disputes, dispute_events]
+        McpClient[MCP client]
     end
 
-    subgraph "FastAPI Application"
-        API[FastAPI App<br/>backend/app/main.py]
-        DisputeAPI[Disputes API<br/>/api/v1/disputes/process]
-        AuthAPI[Auth API<br/>/api/v1/login]
-        AdminAPI[Admin API<br/>/api/v1/admin/users]
+    Backend --> Api
+    Api --> Services
+    Services --> Models
+    Services --> McpClient
+
+    Models --> Postgres[(PostgreSQL)]
+    McpClient --> Taxi[Taxi MCP mock]
+    McpClient --> Afisha[Afisha MCP mock]
+
+    subgraph DevOps[DevOps]
+        Compose[Docker Compose]
+        CI[GitHub Actions]
     end
 
-    subgraph "Слой бизнес-логики"
-        Processor[Dispute Processor<br/>services/dispute_processor.py]
-        Parser[Dispute Parser<br/>services/dispute_parser.py]
-        Classifier[Service Classifier<br/>services/service_classifier.py]
-        Dispatcher[MCP Dispatcher<br/>services/mcp_dispatcher.py]
-        Users[Users Service<br/>services/users.py]
-    end
-
-    subgraph "MCP слой"
-        MCPClient[MCP Client<br/>backend/app/mcp/client.py]
-        TaxiMCP[Taxi Mock MCP<br/>backend/mcp_servers/taxi_mock.py]
-        AfishaMCP[Afisha Mock MCP<br/>backend/mcp_servers/afisha_mock.py]
-    end
-
-    subgraph "Данные"
-        DB[(PostgreSQL<br/>users)]
-        MockData[(Mock service data<br/>rides, tickets)]
-    end
-
-    subgraph "Инфраструктура"
-        Docker[Docker Compose]
-        Tests[pytest]
-    end
-
-    UI --> Queue
-    UI --> Board
-    UI --> Inspector
-
-    Board -->|HTTP/REST| API
-    API --> DisputeAPI
-    API --> AuthAPI
-    API --> AdminAPI
-
-    DisputeAPI --> Processor
-    Processor --> Parser
-    Processor --> Classifier
-    Processor --> Dispatcher
-    Dispatcher --> MCPClient
-    MCPClient --> TaxiMCP
-    MCPClient --> AfishaMCP
-
-    AuthAPI --> Users
-    AdminAPI --> Users
-    Users --> DB
-
-    TaxiMCP --> MockData
-    AfishaMCP --> MockData
-
-    Docker --> API
-    Docker --> DB
-    Docker --> TaxiMCP
-    Docker --> AfishaMCP
-    Tests --> Processor
-    Tests --> Parser
-    Tests --> Classifier
-    Tests --> MCPClient
+    Compose -. запускает .-> Frontend
+    Compose -. запускает .-> Backend
+    Compose -. запускает .-> Postgres
+    Compose -. запускает .-> Taxi
+    Compose -. запускает .-> Afisha
+    CI -. проверяет .-> Backend
+    CI -. проверяет .-> Frontend
 ```
+
+### Поток обработки диспута
+
+1. Оператор авторизуется через `POST /api/v1/login` и получает JWT.
+2. Frontend получает рабочую очередь из `GET /api/v1/operator/cases`.
+3. Backend выполняет парсинг, классификацию сервиса и обращение к нужному MCP-адаптеру.
+4. Для реальной обработки диспута используется durable workflow: `disputes` + `dispute_events`, идемпотентность, HMAC-подписи событий и optimistic locking.
+5. Frontend отображает результат и журнал действий, но не хранит бизнес-логику обработки.

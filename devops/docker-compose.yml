@@ -6,10 +6,12 @@ services:
     container_name: dispute-app
     ports:
       - "8000:8000"
-    env_file:
-      - ../.env
     environment:
       DATABASE_URL: postgresql+asyncpg://dispute:dispute@postgres:5432/dispute
+      JWT_SECRET: ${JWT_SECRET:-local-dev-secret}
+      EVENT_SIGNATURE_SECRET: ${EVENT_SIGNATURE_SECRET:-local-event-secret}
+      SEED_OPERATOR_USERNAME: ${SEED_OPERATOR_USERNAME:-operator}
+      SEED_OPERATOR_PASSWORD: ${SEED_OPERATOR_PASSWORD:-operator123}
       LOG_LEVEL: INFO
       MCP_TAXI_URL: ${MCP_TAXI_URL:-http://host.docker.internal:9001}
       MCP_AFISHA_URL: ${MCP_AFISHA_URL:-http://host.docker.internal:9002}
@@ -21,6 +23,23 @@ services:
       postgres:
         condition: service_healthy
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    restart: unless-stopped
+
+  frontend:
+    image: node:22-alpine
+    container_name: dispute-frontend
+    working_dir: /app
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000/api/v1
+    volumes:
+      - ../frontend:/app
+      - frontend-node-modules:/app/node_modules
+    depends_on:
+      app:
+        condition: service_started
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
     restart: unless-stopped
 
   postgres:
@@ -71,3 +90,4 @@ services:
 
 volumes:
   postgres-data:
+  frontend-node-modules:
