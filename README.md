@@ -1,85 +1,47 @@
 # dispute_mcp_processing
 
+Сервис обработки диспутов НСПК: парсинг текста, определение сервиса (Такси / Афиша), запрос к MCP, формирование ответа оператору.
+
 ## Команда
 
-| Имя | Роль | GitHub | Доступность | Отчет |
-|--------------------|-------------------------|------------------------------------------|------------|-------|
-| Анна Милютина | Аналитика | [millana4](https://github.com/millana4) | 9:00 — 21:00 | Отчет |
-| Иван Людвиков | Разработка | [Vanusha61](https://github.com/Vanusha61) | 9:00 — 22:00 | Отчет |
-| Артём Царюк | Тимлид | [funcid](https://github.com/funcid) | 18:00 — 21:00 | Отчет |
-| Абида Аюшиев | Тестировщик | [ayutoso28](https://github.com/ayutoso28) | 9:00 — 22:00 | Отчет |
-| Альбина Шустова | Разработка | [AlbinaShu](https://github.com/AlbinaShu) | 12:00 — 23:00 | Отчет |
+| Имя | Роль | GitHub | Доступность | Отчёт |
+|--------------------|-------------------------|------------------------------------------|------------|--------|
+| Анна Милютина | Аналитика | [millana4](https://github.com/millana4) | 9:00 — 21:00 | [отчёт](reports/anna-milyutina.md) |
+| Иван Людвиков | Разработка | [Vanusha61](https://github.com/Vanusha61) | 9:00 — 22:00 | [отчёт](reports/ivan-lyudvikov.md) |
+| Артём Царюк | Тимлид | [funcid](https://github.com/funcid) | 18:00 — 21:00 | [отчёт](reports/artyom-tsaryuk.md) |
+| Абида Аюшиев | Тестировщик | [ayutoso28](https://github.com/ayutoso28) | 9:00 — 22:00 | [отчёт](reports/abida-ayushiev.md) |
+| Альбина Шустова | Разработка | [AlbinaShu](https://github.com/AlbinaShu) | 12:00 — 23:00 | [отчёт](reports/albina-shustova.md) |
 
-## Задание: система обработки диспутов с подключением MCP-серверов
+Сводка по всем участникам: [reports/README.md](reports/README.md).
 
-Описание: сервис для автоматической обработки диспутов НСПК. Оператор вставляет
-свободный текст обращения, система извлекает идентификаторы платежа, определяет
-сервис, обращается к соответствующему MCP-серверу и формирует обоснованный
-результат обработки.
+## Функции
 
-Один диспут относится к одному платежу и маршрутизируется только в один сервис:
-Такси, Афиша или ручная проверка, если сервис не удалось определить надежно.
+* `POST /api/v1/disputes/process` — обработка текста диспута.
+* Парсинг: `transaction_id`, `order_id`, `user_id`, `service_hint`.
+* Классификация сервиса: правила, при необходимости LLM (GigaChat).
+* MCP: один коннектор на диспут (taxi / afisha).
+* Mock MCP: Такси (поездка), Афиша (билет/событие).
+* Статусы кейса в UI: `new`, `processing`, `attention`, `resolved`.
+* Auth: JWT, `POST /login`, `PATCH /change-password`, admin API для пользователей.
+* Идемпотентность: заголовок `Idempotency-Key`, hash нормализованного текста.
+* Таблицы `disputes`, `dispute_events`; HMAC-подпись событий.
+* Публикация событий в Kafka (`dispute-events`) после commit в БД.
+* Блокировка диспута: `version`, `assigned_to`, `locked_until`; `claim` / `status` с `expected_version`.
+* Операторский UI: `GET /api/v1/operator/cases` и действия parse / mcp / result.
 
-#### Основные функции:
+## Стек
 
-* Прием текста диспута по HTTP-запросу или через операторский интерфейс.
-* Извлечение ключевых идентификаторов: `transaction_id`, `order_id`, `user_id`.
-* Определение сервиса по явной подсказке, текстовым признакам и формату заказа.
-* Маршрутизация запроса только в один MCP-коннектор.
-* Получение моковых данных из сервисов Такси и Афиша.
-* Формирование итогового ответа по результатам обработки.
-* Перевод неоднозначных случаев в ручную проверку.
+| Слой | Технологии |
+|------|------------|
+| Backend | Python, FastAPI, SQLAlchemy, Pydantic, Uvicorn, aiokafka |
+| Frontend | React, TypeScript, Vite |
+| БД | PostgreSQL |
+| Очередь | Apache Kafka |
+| MCP | MCP SDK, mock-серверы taxi / afisha |
+| Тесты | pytest, pytest-asyncio, Vitest |
+| Сборка | Docker, Docker Compose |
 
-Дополнительные функции:
-
-* Журнал событий обработки в операторском интерфейсе.
-* Статусная модель кейса: новый, в работе, проверка, готов.
-* Авторизация и базовое администрирование пользователей в backend API.
-* Идемпотентная обработка повторных запросов через `Idempotency-Key` и hash текста.
-* Durable event log с HMAC-подписью событий обработки.
-* Docker Compose для запуска API, PostgreSQL и mock MCP-сервисов.
-
-#### Требования к бэкенду:
-
-1. Разработать API для обработки диспута. Основной эндпоинт:
-   `POST /api/v1/disputes/process`.
-2. Реализовать пайплайн обработки:
-   * парсинг свободного текста;
-   * определение сервиса;
-   * вызов MCP-клиента;
-   * агрегация ответа;
-   * формирование результата для оператора.
-3. Реализовать mock MCP-сервисы:
-   * Такси: получение данных о поездке;
-   * Афиша: получение данных о билете/событии.
-4. Реализовать поведение для неопределенных случаев:
-   * неизвестный сервис - ручная проверка;
-   * данные в сервисе не найдены - ручная проверка;
-   * найденные данные подтверждают сценарий возврата - готовый ответ.
-5. Реализовать базовую модель пользователей и JWT-авторизацию.
-6. Подготовить таблицы `disputes` и `dispute_events` для аудита, повторов и восстановления.
-7. Подготовить тесты для парсинга, NLU, агрегатора, idempotency, event signatures и mock MCP-сервисов.
-
-#### Результат реализации бэкенда:
-
-1. Создан FastAPI backend с эндпоинтом обработки диспута и auth/admin API.
-2. Реализован расширяемый слой MCP-клиентов и два mock MCP-сервера.
-3. Система не зависит от внешнего LLM для базового сценария: сначала
-   используются правила, LLM может подключаться как fallback.
-4. Добавлен persistent workflow: принятый диспут сохраняется, события пишутся в append-only журнал.
-5. Подготовлен набор автоматических тестов.
-6. Создан Docker Compose для запуска API, PostgreSQL, Такси MCP и Афиша MCP.
-
-## Технологический стек
-
-* Backend: Python, FastAPI, SQLAlchemy, Pydantic, Uvicorn.
-* Frontend: React, TypeScript, Vite.
-* База данных: PostgreSQL.
-* Интеграции: MCP SDK, mock MCP-серверы.
-* Тесты: pytest, pytest-asyncio.
-* Инфраструктура: Docker, Docker Compose.
-
-## Структура проекта
+## Структура репозитория
 
 ```text
 backend/
@@ -108,28 +70,30 @@ devops/
   docker-compose.yml
 docs/
   openapi.yaml
+reports/             # отчёты участников по коммитам
 .github/
   workflows/ci.yml
 ```
 
-## Запуск проекта локально
+## Запуск
 
-### Backend и MCP-сервисы
-
-Создайте `.env` на основе `.env.example`, затем запустите контейнеры:
+### Docker Compose (backend, PostgreSQL, Kafka, frontend, MCP mocks)
 
 ```bash
 docker compose -f devops/docker-compose.yml up --build
 ```
 
-Backend API доступен по адресу: `http://localhost:8000`.
+| Сервис | URL |
+|--------|-----|
+| Backend API | http://localhost:8000 |
+| Swagger | http://localhost:8000/docs |
+| Frontend | http://localhost:5173 |
+| Taxi MCP mock | http://localhost:9001 |
+| Afisha MCP mock | http://localhost:9002 |
 
-Mock MCP-сервисы:
+Учётная запись по умолчанию (seed): `operator` / `operator123` (переменные `SEED_OPERATOR_USERNAME`, `SEED_OPERATOR_PASSWORD`).
 
-* Такси: `http://localhost:9001`
-* Афиша: `http://localhost:9002`
-
-### Frontend
+### Frontend отдельно
 
 ```bash
 cd frontend
@@ -137,9 +101,9 @@ npm install
 npm run dev
 ```
 
-Операторский интерфейс доступен по адресу: `http://localhost:5173`.
+Переменная `VITE_API_BASE_URL` (по умолчанию `http://localhost:8000/api/v1`).
 
-### Запуск тестов
+### Тесты backend
 
 ```bash
 cd backend
@@ -154,7 +118,9 @@ cd frontend
 npm run build
 ```
 
-## Пример запроса
+## API
+
+Спецификация: [docs/openapi.yaml](docs/openapi.yaml).
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/disputes/process \
@@ -165,7 +131,7 @@ curl -X POST http://localhost:8000/api/v1/disputes/process \
   -d "{\"text\":\"От НСПК поступил диспут: transaction_id=TXN-98765, order_id=TAXI-240518. Клиент сообщает, что поездка не состоялась, но оплата списана.\"}"
 ```
 
-Пример результата:
+Ответ `200`:
 
 ```json
 {
