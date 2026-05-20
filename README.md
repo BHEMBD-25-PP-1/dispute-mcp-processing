@@ -12,8 +12,6 @@
 | Абида Аюшиев | Тестировщик | [ayutoso28](https://github.com/ayutoso28) | 9:00 — 22:00 | [отчёт](reports/abida-ayushiev.md) |
 | Альбина Шустова | Разработка | [AlbinaShu](https://github.com/AlbinaShu) | 12:00 — 23:00 | [отчёт](reports/albina-shustova.md) |
 
-Сводка по всем участникам: [reports/README.md](reports/README.md).
-
 ## Функции
 
 * `POST /api/v1/disputes/process` — обработка текста диспута.
