@@ -6,6 +6,7 @@ class GigaChatProperties(BaseSettings):
     auth_key: str = Field(default="", alias="GIGACHAT_AUTH_KEY")
     auth_url: str = Field(default="", alias="GIGACHAT_AUTH_URL")
     api_url: str = Field(default="", alias="GIGACHAT_API_URL")
+    llm_provider: str = Field(default="gigachat", alias="LLM_PROVIDER")
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -23,6 +24,10 @@ class GigaChatProperties(BaseSettings):
     @property
     def GIGACHAT_API_URL(self) -> str:
         return self.api_url
+
+    @property
+    def LLM_PROVIDER(self) -> str:
+        return self.llm_provider
 
 
 def get_gigachat_settings():
