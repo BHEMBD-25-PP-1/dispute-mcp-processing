@@ -13,8 +13,16 @@ class Settings(BaseSettings):
     kafka_bootstrap_servers: str = "localhost:9092"
     kafka_events_topic: str = "dispute-events"
     log_level: str = "INFO"
+    cors_origins: str = (
+        "http://localhost:5173,"
+        "http://127.0.0.1:5173,"
+        "https://bhembd-25-pp-1.github.io"
+    )
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    def cors_origin_list(self) -> list[str]:
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
 
 settings = Settings()
