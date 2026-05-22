@@ -66,3 +66,39 @@ async def test_publish_dispute_event_sends_serialized_payload(monkeypatch):
     assert sent["value"]["sequence"] == 7
     assert sent["value"]["event_type"] == "dispute.resolved"
     assert sent["value"]["signature"] == "sig"
+
+
+@pytest.mark.asyncio
+async def test_get_producer_starts_reuses_and_closes(monkeypatch):
+    instances = []
+
+    class FakeProducer:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            self.started = False
+            self.stopped = False
+            instances.append(self)
+
+        async def start(self):
+            self.started = True
+
+        async def stop(self):
+            self.stopped = True
+
+    monkeypatch.setattr(event_publisher, "_producer", None)
+    monkeypatch.setattr(event_publisher, "AIOKafkaProducer", FakeProducer)
+
+    await event_publisher.close_kafka_producer()
+    producer = await event_publisher._get_producer()
+    reused = await event_publisher._get_producer()
+
+    assert producer is reused
+    assert producer.started is True
+    assert len(instances) == 1
+    assert producer.kwargs["key_serializer"]("DSP-1") == b"DSP-1"
+    assert producer.kwargs["value_serializer"]({"text": "привет"}) == '{"text": "привет"}'.encode("utf-8")
+
+    await event_publisher.close_kafka_producer()
+
+    assert producer.stopped is True
+    assert event_publisher._producer is None

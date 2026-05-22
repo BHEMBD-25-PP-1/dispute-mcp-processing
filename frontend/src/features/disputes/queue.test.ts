@@ -50,4 +50,12 @@ describe('queue helpers', () => {
   it('keeps current selected case when it is still active', () => {
     expect(pickVisibleCaseId(cases, 'processing-case')).toBe('processing-case');
   });
+
+  it('falls back to provided id, first case, or undefined when no active cases exist', () => {
+    const resolvedOnly = [makeCase('resolved-case', 'resolved')];
+
+    expect(pickVisibleCaseId(resolvedOnly, 'missing-case', 'fallback-case')).toBe('fallback-case');
+    expect(pickVisibleCaseId(resolvedOnly, 'missing-case')).toBe('resolved-case');
+    expect(pickVisibleCaseId([], 'missing-case')).toBeUndefined();
+  });
 });

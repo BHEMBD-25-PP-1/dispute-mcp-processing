@@ -1,5 +1,6 @@
 frontend/node_modules/
 frontend/dist/
+frontend/coverage/
 frontend/.vite/
 frontend/.env.local
 frontend/*.tsbuildinfo
@@ -7,6 +8,7 @@ frontend/vite.config.d.ts
 frontend/vite.config.js
 backend/.coverage
 backend/coverage.xml
+backend/.venv/
 backend/.pytest_cache/
 backend/**/__pycache__/
 backend/*.db

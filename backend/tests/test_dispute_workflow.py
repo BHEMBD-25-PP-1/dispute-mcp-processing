@@ -7,8 +7,17 @@ from app.models.base import Base
 from app.models.dispute import Dispute
 from app.models.dispute_event import DisputeEvent
 from app.models.user import User  # noqa: F401
-from app.services.dispute_errors import DisputeConflictError, InvalidDisputeTransitionError
-from app.services.dispute_repository import change_dispute_status, claim_dispute
+from app.services.dispute_errors import (
+    DisputeConflictError,
+    DisputeNotFoundError,
+    InvalidDisputeTransitionError,
+)
+from app.services.dispute_repository import (
+    _ensure_update_won_race,
+    change_dispute_status,
+    claim_dispute,
+    get_dispute,
+)
 from app.services.dispute_workflow import submit_dispute
 
 
@@ -161,4 +170,68 @@ async def test_status_update_requires_current_version_and_allowed_transition(ses
             new_status="accepted",
             expected_version=updated.version,
             correlation_id="corr-5",
+        )
+
+
+@pytest.mark.asyncio
+async def test_repository_reports_missing_disputes(session):
+    with pytest.raises(DisputeNotFoundError, match="missing-id"):
+        await get_dispute(session, "missing-id")
+
+
+@pytest.mark.asyncio
+async def test_claim_dispute_rejects_active_lock_for_other_operator(session):
+    result = await submit_dispute(
+        session,
+        text="Клиент оспаривает списание, деталей нет",
+        idempotency_key="lock-1",
+        producer="test",
+        correlation_id="corr-1",
+    )
+    claimed = await claim_dispute(
+        session,
+        dispute_id=result["dispute_id"],
+        operator_id="operator-1",
+        expected_version=result["version"],
+        correlation_id="corr-2",
+    )
+
+    with pytest.raises(DisputeConflictError):
+        await claim_dispute(
+            session,
+            dispute_id=result["dispute_id"],
+            operator_id="operator-2",
+            expected_version=claimed.version,
+            correlation_id="corr-3",
+        )
+
+
+@pytest.mark.asyncio
+async def test_claim_dispute_rejects_final_dispute(session):
+    result = await submit_dispute(
+        session,
+        text="transaction_id=TXN-98765, order_id=TAXI-240518 проблема такси",
+        idempotency_key="final-1",
+        producer="test",
+        correlation_id="corr-1",
+    )
+
+    with pytest.raises(InvalidDisputeTransitionError):
+        await claim_dispute(
+            session,
+            dispute_id=result["dispute_id"],
+            operator_id="operator-1",
+            expected_version=result["version"],
+            correlation_id="corr-2",
+        )
+
+
+def test_update_race_guard_raises_conflict():
+    with pytest.raises(DisputeConflictError):
+        _ensure_update_won_race(
+            0,
+            action="Status update",
+            dispute_id="DSP-1",
+            operator_id="operator-1",
+            expected_version=7,
         )
