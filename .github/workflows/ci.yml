@@ -84,8 +84,8 @@ jobs:
       - name: Build frontend
         env:
           GITHUB_PAGES: "true"
-          # Демо-бэкенд на VPS; переопределение: Settings → Variables → VITE_API_BASE_URL
-          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'http://92.242.60.87:8000/api/v1' }}
+          # Демо-бэкенд HTTPS; переопределение: Settings → Variables → VITE_API_BASE_URL
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'https://dispute-demo.ru/api/v1' }}
         run: npm run build
 
       - name: Configure GitHub Pages
